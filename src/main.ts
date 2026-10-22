@@ -30,4 +30,4 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`🚀 Swagger: http://localhost:${port}/api/docs`);
 }
-bootstrap();
+void bootstrap();
