@@ -6,18 +6,18 @@ import { UsersModule } from './users/users.module.js';
 import { RolesModule } from './roles/roles.modules.js';
 import { SeedModule } from './seed/seed.module.js';
 import { HealthModule } from './health/health.module.js';
-import { ConstanciasModule } from './constancias/constancias.module.js';
+import { CertificateRequestModule } from './certificates/certificate-request.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     SupabaseModule,
+    HealthModule,
     AuthModule,
     UsersModule,
     RolesModule,
     SeedModule,
-    HealthModule,
-    ConstanciasModule,
+    CertificateRequestModule,
   ],
 })
 export class AppModule {}

@@ -1,8 +1,10 @@
-import { filtroBusqueda } from './supabase-solicitud.repository.js';
+import { filtroBusqueda } from '../repositories/supabase-certificate-request.repository.js';
 
 describe('filtroBusqueda (US09)', () => {
   it('busca por DNI y número cuando se escriben solo dígitos, con o sin puntos', () => {
-    expect(filtroBusqueda('30.112.456')).toBe('dni.ilike."%30112456%",numero.ilike."%30112456%"');
+    expect(filtroBusqueda('30.112.456')).toBe(
+      'dni.ilike."%30112456%",numero.ilike."%30112456%"',
+    );
   });
 
   it('busca por número y por nombre en los dos órdenes', () => {

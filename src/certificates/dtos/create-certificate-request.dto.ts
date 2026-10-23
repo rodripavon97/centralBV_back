@@ -10,17 +10,21 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
-import { TIPOS_SINIESTRO } from '../domain/solicitud.entity.js';
-import type { TipoSiniestro } from '../domain/solicitud.entity.js';
+import {
+  ACCIDENT_TYPES,
+  type AccidentType,
+} from '../domain/certificate-request.enums.js';
 
-const recortar = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
-// Un opcional vacío se guarda como NULL.
+const recortar = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
+// Empty optional strings are stored as NULL.
 const recortarOpcional = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() || null : value;
 
 const SOLO_LETRAS = /^[\p{L}' -]+$/u;
 
-export class DamnificadoDto {
+/** Victim (damnificado) fields for create/update. */
+export class VictimDto {
   @ApiProperty({ example: 'Lucía' })
   @Transform(recortar)
   @IsString()
@@ -37,17 +41,24 @@ export class DamnificadoDto {
   @MaxLength(80)
   apellido: string;
 
-  @ApiProperty({ example: '30112456', description: '7 u 8 dígitos, sin puntos' })
+  @ApiProperty({
+    example: '30112456',
+    description: '7 u 8 dígitos, sin puntos',
+  })
   @Transform(recortar)
   @IsString()
-  @Matches(/^\d{7,8}$/, { message: 'El DNI debe tener 7 u 8 dígitos, sin puntos' })
+  @Matches(/^\d{7,8}$/, {
+    message: 'El DNI debe tener 7 u 8 dígitos, sin puntos',
+  })
   dni: string;
 
   @ApiPropertyOptional({ example: '11 5555-0142' })
   @Transform(recortarOpcional)
   @IsOptional()
   @IsString()
-  @Matches(/^(?=(?:\D*\d){6})[\d\s()+-]{6,20}$/, { message: 'El teléfono no es válido' })
+  @Matches(/^(?=(?:\D*\d){6})[\d\s()+-]{6,20}$/, {
+    message: 'El teléfono no es válido',
+  })
   telefono: string | null = null;
 
   @ApiPropertyOptional({ example: 'Calle San Martín 450' })
@@ -58,14 +69,20 @@ export class DamnificadoDto {
   domicilio: string | null = null;
 }
 
-export class SiniestroDto {
-  @ApiProperty({ enum: TIPOS_SINIESTRO, example: 'VIVIENDA' })
-  @IsIn(TIPOS_SINIESTRO, { message: 'El tipo de siniestro no es válido' })
-  tipo: TipoSiniestro;
+/** Accident (siniestro) fields for create/update. */
+export class AccidentDto {
+  @ApiProperty({ enum: ACCIDENT_TYPES, example: 'VIVIENDA' })
+  @IsIn(ACCIDENT_TYPES, { message: 'El tipo de siniestro no es válido' })
+  tipo: AccidentType;
 
-  @ApiProperty({ example: '2026-10-11T18:20', description: 'Hora local de Argentina' })
+  @ApiProperty({
+    example: '2026-10-11T18:20',
+    description: 'Hora local de Argentina',
+  })
   @IsString()
-  @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, { message: 'La fecha y hora debe tener el formato AAAA-MM-DDTHH:mm' })
+  @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, {
+    message: 'La fecha y hora debe tener el formato AAAA-MM-DDTHH:mm',
+  })
   fechaHora: string;
 
   @ApiProperty({ example: 'Calle San Martín 450' })
@@ -83,17 +100,17 @@ export class SiniestroDto {
   descripcion: string;
 }
 
-/** Cuerpo del alta (US08) y de la edición (US13): siempre la solicitud completa. */
-export class GuardarSolicitudDto {
-  @ApiProperty({ type: DamnificadoDto })
+/** Body for create (US08) and edit (US13): always the full request. */
+export class CreateCertificateRequestDto {
+  @ApiProperty({ type: VictimDto })
   @IsDefined({ message: 'Faltan los datos del damnificado' })
   @ValidateNested()
-  @Type(() => DamnificadoDto)
-  damnificado: DamnificadoDto;
+  @Type(() => VictimDto)
+  damnificado: VictimDto;
 
-  @ApiProperty({ type: SiniestroDto })
+  @ApiProperty({ type: AccidentDto })
   @IsDefined({ message: 'Faltan los datos del siniestro' })
   @ValidateNested()
-  @Type(() => SiniestroDto)
-  siniestro: SiniestroDto;
+  @Type(() => AccidentDto)
+  siniestro: AccidentDto;
 }
