@@ -28,19 +28,29 @@ const solicitud = (
   estado,
   fechaAlta: '2026-10-11T21:20:00Z',
   damnificado: {
-    nombre: 'Lucía',
-    apellido: 'Fernández',
+    nombre: 'Lucía Fernández',
     dni: '30112456',
     telefono: null,
-    domicilio: null,
   },
   siniestro: {
     tipo: 'VIVIENDA',
-    fechaHora: '2026-10-11T18:20',
-    lugar: 'Calle San Martín 450',
-    descripcion: 'Incendio en cocina',
+    fecha: '2026-10-11',
+    hora: '18:20',
+    direccion: 'Calle San Martín 450',
+    numeroParte: 'P-2026-0142',
+    motivo: 'Constancia para el seguro',
+    localidad: 'Morón',
+    partido: 'Morón',
+    perdidas: 'Daños en cocina',
+    patenteVehiculo: null,
+  },
+  constancia: {
+    destino: 'SEGURO',
+    razonSocial: 'La Caja Seguros',
+    numeroPoliza: 'POL-998877',
   },
   abono,
+  observaciones: null,
   motivoCancelacion: null,
   canceladoEn: null,
   retiradoEn: null,
@@ -48,20 +58,29 @@ const solicitud = (
   retiradoPorDni: null,
 });
 
-const dto = (fechaHora = '2026-10-11T18:20') =>
+const dto = (fecha = '2026-10-11', hora = '18:20') =>
   Object.assign(new CreateCertificateRequestDto(), {
     damnificado: {
-      nombre: 'Lucía',
-      apellido: 'Fernández',
+      nombre: 'Lucía Fernández',
       dni: '30112456',
       telefono: null,
-      domicilio: null,
     },
     siniestro: {
-      tipo: 'VIVIENDA',
-      fechaHora,
-      lugar: 'Calle San Martín 450',
-      descripcion: 'Incendio en cocina',
+      tipo: 'VIVIENDA' as const,
+      fecha,
+      hora,
+      direccion: 'Calle San Martín 450',
+      numeroParte: 'P-2026-0142',
+      motivo: 'Constancia para el seguro',
+      localidad: 'Morón',
+      partido: 'Morón',
+      perdidas: 'Daños en cocina',
+      patenteVehiculo: null,
+    },
+    constancia: {
+      destino: 'SEGURO' as const,
+      razonSocial: 'La Caja Seguros',
+      numeroPoliza: 'POL-998877',
     },
   });
 
@@ -73,6 +92,7 @@ describe('CertificateRequestService', () => {
     create: ReturnType<typeof vi.fn>;
     updatePending: ReturnType<typeof vi.fn>;
     cancelPending: ReturnType<typeof vi.fn>;
+    markAsRealized: ReturnType<typeof vi.fn>;
     signRequest: ReturnType<typeof vi.fn>;
     addPayment: ReturnType<typeof vi.fn>;
     markAsDelivered: ReturnType<typeof vi.fn>;
@@ -85,6 +105,7 @@ describe('CertificateRequestService', () => {
       create: vi.fn(),
       updatePending: vi.fn(),
       cancelPending: vi.fn(),
+      markAsRealized: vi.fn(),
       signRequest: vi.fn(),
       addPayment: vi.fn(),
       markAsDelivered: vi.fn(),
@@ -145,7 +166,17 @@ describe('CertificateRequestService', () => {
       await service.create(dto(), 'usuario-1');
       expect(repo.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          siniestro: expect.objectContaining({ fechaHora: '2026-10-11T18:20' }),
+          siniestro: expect.objectContaining({
+            fecha: '2026-10-11',
+            hora: '18:20',
+            direccion: 'Calle San Martín 450',
+            numeroParte: 'P-2026-0142',
+          }),
+          constancia: expect.objectContaining({
+            destino: 'SEGURO',
+            razonSocial: 'La Caja Seguros',
+            numeroPoliza: 'POL-998877',
+          }),
         }),
         'usuario-1',
       );
@@ -153,15 +184,41 @@ describe('CertificateRequestService', () => {
 
     it('rechaza una fecha que no existe', async () => {
       await expect(
-        service.create(dto('2026-02-30T10:00'), null),
+        service.create(dto('2026-02-30', '10:00'), null),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(repo.create).not.toHaveBeenCalled();
     });
 
     it('rechaza una fecha futura', async () => {
       await expect(
-        service.create(dto('2999-01-01T10:00'), null),
+        service.create(dto('2999-01-01', '10:00'), null),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('exige patente cuando el tipo es VEHICULAR', async () => {
+      const body = dto();
+      body.siniestro.tipo = 'VEHICULAR';
+      body.siniestro.patenteVehiculo = null;
+      await expect(service.create(body, null)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('exige póliza cuando el destino es SEGURO', async () => {
+      const body = dto();
+      body.constancia.numeroPoliza = null;
+      await expect(service.create(body, null)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('rechaza póliza cuando el destino es ACCION_SOCIAL', async () => {
+      const body = dto();
+      body.constancia.destino = 'ACCION_SOCIAL';
+      body.constancia.numeroPoliza = 'POL-1';
+      await expect(service.create(body, null)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     });
   });
 
@@ -236,6 +293,42 @@ describe('CertificateRequestService', () => {
       await expect(
         service.cancelRequest(ID, 'No corresponde'),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('realizeRequest', () => {
+    it('realiza una solicitud en estado PENDIENTE', async () => {
+      const realizada = solicitud('REALIZADA');
+      repo.findById
+        .mockResolvedValueOnce(solicitud('PENDIENTE'))
+        .mockResolvedValueOnce(realizada);
+      repo.markAsRealized.mockResolvedValue(true);
+
+      await expect(
+        service.realizeRequest(ID, 'Nota de prueba'),
+      ).resolves.toMatchObject({
+        estado: 'REALIZADA',
+      });
+      expect(repo.markAsRealized).toHaveBeenCalledWith(ID, 'Nota de prueba');
+    });
+
+    it.each(['REALIZADA', 'FIRMADA', 'RETIRADA', 'CANCELADA'] as const)(
+      'no permite realizar una solicitud %s',
+      async (estado) => {
+        repo.findById.mockResolvedValue(solicitud(estado));
+        await expect(service.realizeRequest(ID)).rejects.toBeInstanceOf(
+          ConflictException,
+        );
+        expect(repo.markAsRealized).not.toHaveBeenCalled();
+      },
+    );
+
+    it('devuelve conflicto si el repo no pudo realizar', async () => {
+      repo.findById.mockResolvedValue(solicitud('PENDIENTE'));
+      repo.markAsRealized.mockResolvedValue(false);
+      await expect(service.realizeRequest(ID)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
     });
   });
 

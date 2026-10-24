@@ -4,6 +4,7 @@
 
 import {
   AccidentType,
+  CertificateDestination,
   PaymentMethod,
   PaymentStatus,
   RequestStatus,
@@ -12,18 +13,32 @@ import {
 /** Victim (damnificado) linked to the certificate request. */
 export interface Victim {
   nombre: string;
-  apellido: string;
   dni: string; // digits only
   telefono: string | null;
-  domicilio: string | null;
 }
 
 /** Accident / incident (siniestro) details for the request. */
 export interface Accident {
   tipo: AccidentType;
-  fechaHora: string; // Argentina time zone: YYYY-MM-DDTHH:mm
-  lugar: string;
-  descripcion: string;
+  fecha: string; // YYYY-MM-DD (Argentina)
+  hora: string; // HH:mm (Argentina)
+  direccion: string;
+  numeroParte: string;
+  motivo: string;
+  localidad: string;
+  partido: string;
+  perdidas: string;
+  /** Required when tipo is VEHICULAR; otherwise null. */
+  patenteVehiculo: string | null;
+}
+
+/** Certificate destination and policy fields filled at request creation. */
+export interface Certificate {
+  destino: CertificateDestination;
+  /** Name of the insurer or social-action entity the certificate is presented to. */
+  razonSocial: string;
+  /** Required when destino is SEGURO; otherwise null. */
+  numeroPoliza: string | null;
 }
 
 /** Fee payment (abono) recorded on the request; null when still PENDIENTE. */
@@ -43,7 +58,10 @@ export interface CertificateRequest {
   fechaAlta: string; // ISO 8601
   damnificado: Victim;
   siniestro: Accident;
+  constancia: Certificate;
   abono: Payment | null;
+  /** Notes captured when marking as REALIZADA; shown on the PDF. */
+  observaciones: string | null;
 
   motivoCancelacion: string | null;
   canceladoEn: string | null;

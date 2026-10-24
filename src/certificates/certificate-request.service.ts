@@ -23,10 +23,13 @@ import { DeliverCertificateRequestDto } from './dtos/deliver-certificate-request
 import {
   ahoraEnArgentina,
   esFechaHoraValida,
+  esPosteriorA,
 } from '../common/utils/date.utils.js';
+import { armarRespuestaPaginada } from '../common/utils/pagination.utils.js';
 
 const NO_MODIFICABLE =
   'Solo se pueden editar o cancelar solicitudes pendientes';
+const NO_REALIZABLE = 'Solo se pueden realizar solicitudes en estado PENDIENTE';
 const NO_FIRMABLE = 'Solo se pueden firmar solicitudes en estado REALIZADA';
 const NO_ABONABLE =
   'No se puede registrar o editar el abono de una solicitud cancelada o entregada';
@@ -52,14 +55,7 @@ export class CertificateRequestService {
       pagina,
       porPagina,
     });
-    const paginas = Math.max(1, Math.ceil(total / porPagina));
-    return {
-      items,
-      total,
-      pagina: Math.min(pagina, paginas),
-      paginas,
-      porPagina,
-    };
+    return armarRespuestaPaginada(items, total, pagina, porPagina);
   }
 
   /** Returns the request or throws if it does not exist. */
@@ -94,6 +90,20 @@ export class CertificateRequestService {
     const cancelada = await this.repo.cancelPending(id, motivo);
     if (!cancelada) throw new ConflictException(NO_MODIFICABLE);
     return cancelada;
+  }
+
+  /**
+   * Realization requires PENDIENTE status and leaves the request in REALIZADA.
+   * Persists optional observaciones for the certificate PDF.
+   */
+  async realizeRequest(id: string, observaciones: string | null = null) {
+    const solicitud = await this.findById(id);
+    if (!canAdvanceTo(solicitud.estado, 'REALIZADA')) {
+      throw new ConflictException(NO_REALIZABLE);
+    }
+    const realizada = await this.repo.markAsRealized(id, observaciones);
+    if (!realizada) throw new ConflictException(NO_REALIZABLE);
+    return this.findById(id);
   }
 
   /** Signing requires REALIZADA status and leaves the request in FIRMADA. */
@@ -174,35 +184,73 @@ export class CertificateRequestService {
     return solicitud;
   }
 
-  /** Rules that class-validator does not cover: real date and not in the future. */
+  /**
+   * Rules that class-validator does not cover: real date/time, not in the future,
+   * patente for VEHICULAR, and póliza according to destino (RN/01).
+   */
   private validateData(
     dto: CreateCertificateRequestDto,
   ): CertificateRequestData {
-    const { fechaHora } = dto.siniestro;
-    if (!esFechaHoraValida(fechaHora)) {
+    const { fecha, hora, tipo } = dto.siniestro;
+    if (!esFechaHoraValida(fecha, hora)) {
       throw new BadRequestException([
         'La fecha y hora del siniestro no existe',
       ]);
     }
-    if (fechaHora > ahoraEnArgentina()) {
+    const ahora = ahoraEnArgentina();
+    if (esPosteriorA(fecha, hora, ahora.fecha, ahora.hora)) {
       throw new BadRequestException([
         'La fecha del siniestro no puede ser posterior al momento actual',
       ]);
     }
-    const { damnificado: d, siniestro: s } = dto;
+
+    if (tipo === 'VEHICULAR' && !dto.siniestro.patenteVehiculo?.trim()) {
+      throw new BadRequestException([
+        'La patente es obligatoria para siniestros vehiculares',
+      ]);
+    }
+    if (tipo === 'VIVIENDA' && dto.siniestro.patenteVehiculo != null) {
+      throw new BadRequestException([
+        'Un siniestro de vivienda no admite patente de vehículo',
+      ]);
+    }
+
+    const { destino } = dto.constancia;
+    if (destino === 'SEGURO' && !dto.constancia.numeroPoliza?.trim()) {
+      throw new BadRequestException([
+        'El número de póliza es obligatorio para destino SEGURO',
+      ]);
+    }
+    if (destino === 'ACCION_SOCIAL' && dto.constancia.numeroPoliza != null) {
+      throw new BadRequestException([
+        'Una constancia de acción social no admite número de póliza',
+      ]);
+    }
+
+    const { damnificado: d, siniestro: s, constancia: c } = dto;
     return {
       damnificado: {
         nombre: d.nombre,
-        apellido: d.apellido,
         dni: d.dni,
         telefono: d.telefono ?? null,
-        domicilio: d.domicilio ?? null,
       },
       siniestro: {
         tipo: s.tipo,
-        fechaHora: s.fechaHora,
-        lugar: s.lugar,
-        descripcion: s.descripcion,
+        fecha: s.fecha,
+        hora: s.hora,
+        direccion: s.direccion,
+        numeroParte: s.numeroParte,
+        motivo: s.motivo,
+        localidad: s.localidad,
+        partido: s.partido,
+        perdidas: s.perdidas,
+        patenteVehiculo:
+          s.tipo === 'VEHICULAR' ? (s.patenteVehiculo ?? null) : null,
+      },
+      constancia: {
+        destino: c.destino,
+        razonSocial: c.razonSocial,
+        numeroPoliza: c.destino === 'SEGURO' ? (c.numeroPoliza ?? null) : null,
       },
     };
   }
