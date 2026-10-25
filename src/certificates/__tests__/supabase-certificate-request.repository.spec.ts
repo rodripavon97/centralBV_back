@@ -7,9 +7,9 @@ describe('filtroBusqueda (US09)', () => {
     );
   });
 
-  it('busca por número y por nombre en los dos órdenes', () => {
+  it('busca por número y por nombre del damnificado', () => {
     expect(filtroBusqueda('Lucía Fer')).toBe(
-      'numero.ilike."%Lucía Fer%",nombre_completo.ilike."%Lucía Fer%",apellido_nombre.ilike."%Lucía Fer%"',
+      'numero.ilike."%Lucía Fer%",nombre.ilike."%Lucía Fer%"',
     );
   });
 

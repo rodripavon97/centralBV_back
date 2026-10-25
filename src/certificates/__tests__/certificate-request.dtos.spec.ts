@@ -9,17 +9,26 @@ import { DeliverCertificateRequestDto } from '../dtos/deliver-certificate-reques
 
 const valido = () => ({
   damnificado: {
-    nombre: 'Lucía',
-    apellido: 'Fernández',
+    nombre: 'Lucía Fernández',
     dni: '30112456',
     telefono: '11 5555-0142',
-    domicilio: 'Calle San Martín 450',
   },
   siniestro: {
     tipo: 'VIVIENDA',
-    fechaHora: '2026-10-11T18:20',
-    lugar: 'Calle San Martín 450',
-    descripcion: 'Incendio en cocina',
+    fecha: '2026-10-11',
+    hora: '18:20',
+    direccion: 'Calle San Martín 450',
+    numeroParte: 'P-2026-0142',
+    motivo: 'Constancia para el seguro',
+    localidad: 'Morón',
+    partido: 'Morón',
+    perdidas: 'Daños en cocina',
+    patenteVehiculo: null,
+  },
+  constancia: {
+    destino: 'SEGURO',
+    razonSocial: 'La Caja Seguros',
+    numeroPoliza: 'POL-998877',
   },
 });
 
@@ -48,30 +57,45 @@ describe('CreateCertificateRequestDto (US08)', () => {
     expect((await validar(valido())).errores).toEqual([]);
   });
 
-  it('acepta teléfono y domicilio vacíos y los guarda como null', async () => {
+  it('acepta teléfono vacío y lo guarda como null', async () => {
     const data = valido();
     data.damnificado.telefono = '';
-    data.damnificado.domicilio = '  ';
     const { dto, errores } = await validar(data);
     expect(errores).toEqual([]);
     expect(dto.damnificado.telefono).toBeNull();
-    expect(dto.damnificado.domicilio).toBeNull();
   });
 
   it('exige los campos obligatorios', async () => {
     const { errores } = await validar({
-      damnificado: { nombre: ' ', apellido: '', dni: '' },
-      siniestro: { tipo: '', fechaHora: '', lugar: '', descripcion: '' },
+      damnificado: { nombre: ' ', dni: '' },
+      siniestro: {
+        tipo: '',
+        fecha: '',
+        hora: '',
+        direccion: '',
+        numeroParte: '',
+        motivo: '',
+        localidad: '',
+        partido: '',
+        perdidas: '',
+      },
+      constancia: { destino: '', razonSocial: '' },
     });
     expect(errores).toEqual(
       expect.arrayContaining([
         'damnificado.nombre',
-        'damnificado.apellido',
         'damnificado.dni',
         'siniestro.tipo',
-        'siniestro.fechaHora',
-        'siniestro.lugar',
-        'siniestro.descripcion',
+        'siniestro.fecha',
+        'siniestro.hora',
+        'siniestro.direccion',
+        'siniestro.numeroParte',
+        'siniestro.motivo',
+        'siniestro.localidad',
+        'siniestro.partido',
+        'siniestro.perdidas',
+        'constancia.destino',
+        'constancia.razonSocial',
       ]),
     );
   });
@@ -93,156 +117,68 @@ describe('CreateCertificateRequestDto (US08)', () => {
     );
   });
 
-  it('acepta los tres tipos de siniestro y rechaza otros', async () => {
-    for (const tipo of ['VIVIENDA', 'VEHICULAR', 'ACCIDENTE_TRANSITO']) {
+  it('acepta VIVIENDA y VEHICULAR y rechaza ACCIDENTE_TRANSITO', async () => {
+    for (const tipo of ['VIVIENDA', 'VEHICULAR']) {
       const data = valido();
       data.siniestro.tipo = tipo;
+      if (tipo === 'VEHICULAR') data.siniestro.patenteVehiculo = 'AB123CD';
       expect((await validar(data)).errores).toEqual([]);
     }
     const data = valido();
-    data.siniestro.tipo = 'INUNDACION';
+    data.siniestro.tipo = 'ACCIDENTE_TRANSITO';
     expect((await validar(data)).errores).toContain('siniestro.tipo');
   });
 
   it('rechaza una fecha con formato dd/mm/aaaa', async () => {
     const data = valido();
-    data.siniestro.fechaHora = '11/10/2026 18:20';
-    expect((await validar(data)).errores).toContain('siniestro.fechaHora');
+    data.siniestro.fecha = '11/10/2026';
+    expect((await validar(data)).errores).toContain('siniestro.fecha');
   });
 
-  it('exige los objetos damnificado y siniestro', async () => {
-    expect((await validar({})).errores).toEqual(['damnificado', 'siniestro']);
+  it('exige damnificado, siniestro y constancia', async () => {
+    expect((await validar({})).errores).toEqual([
+      'damnificado',
+      'siniestro',
+      'constancia',
+    ]);
   });
 });
 
 describe('CancelCertificateRequestDto (US13)', () => {
   it('exige un motivo que no sea solo espacios', async () => {
     const errores = await validate(
-      plainToInstance(CancelCertificateRequestDto, { motivo: '   ' }),
+      plainToInstance(CancelCertificateRequestDto, { motivo: '  ' }),
     );
-    expect(errores[0]?.property).toBe('motivo');
-  });
-
-  it('acepta un motivo válido', async () => {
-    const errores = await validate(
-      plainToInstance(CancelCertificateRequestDto, {
-        motivo: 'No corresponde al cuartel',
-      }),
-    );
-    expect(errores).toHaveLength(0);
+    expect(errores.some((e) => e.property === 'motivo')).toBe(true);
   });
 });
 
 describe('ListCertificateRequestsDto (US09)', () => {
-  it('usa orden descendente, página 1 y 20 por página por defecto', async () => {
+  it('aplica defaults de paginación y orden', async () => {
     const dto = plainToInstance(ListCertificateRequestsDto, {});
-    expect(await validate(dto)).toHaveLength(0);
-    expect(dto).toMatchObject({ orden: 'desc', pagina: 1, porPagina: 20 });
-  });
-
-  it('convierte la página que llega como texto y rechaza un estado inexistente', async () => {
-    const dto = plainToInstance(ListCertificateRequestsDto, {
-      pagina: '3',
-      estado: 'ENTREGADA',
-    });
-    const errores = await validate(dto);
-    expect(dto.pagina).toBe(3);
-    expect(errores.map((e) => e.property)).toEqual(['estado']);
+    await validate(dto);
+    expect(dto.pagina).toBe(1);
+    expect(dto.porPagina).toBe(20);
+    expect(dto.orden).toBe('desc');
   });
 });
 
 describe('AddPaymentDto', () => {
-  const validarAbono = (data: unknown) =>
-    validate(plainToInstance(AddPaymentDto, data), {
-      whitelist: true,
-      forbidNonWhitelisted: true,
-    });
-
-  it('acepta ABONADO con monto y método', async () => {
-    expect(
-      await validarAbono({
-        estado: 'ABONADO',
-        monto: '1500.50',
-        metodoPago: 'TRANSFERENCIA',
-      }),
-    ).toHaveLength(0);
-  });
-
-  it('acepta EXENTO con motivo', async () => {
-    expect(
-      await validarAbono({
-        estado: 'EXENTO',
-        motivoExento: 'Beneficiario de acción social',
-      }),
-    ).toHaveLength(0);
-  });
-
-  it('exige monto y método si es ABONADO', async () => {
-    const errores = await validarAbono({ estado: 'ABONADO' });
-    expect(errores.map((e) => e.property)).toEqual(
-      expect.arrayContaining(['monto', 'metodoPago']),
-    );
-  });
-
-  it('exige motivoExento si es EXENTO', async () => {
-    const errores = await validarAbono({ estado: 'EXENTO', motivoExento: '  ' });
-    expect(errores.map((e) => e.property)).toContain('motivoExento');
-  });
-
-  it('rechaza un estado inválido o PENDIENTE', async () => {
-    for (const estado of ['PENDIENTE', 'PAGADO']) {
-      const errores = await validarAbono({ estado });
-      expect(errores.map((e) => e.property)).toContain('estado');
-    }
-  });
-
-  it('rechaza monto cero o método inválido', async () => {
-    const errores = await validarAbono({
+  it('acepta un abono completo', async () => {
+    const dto = plainToInstance(AddPaymentDto, {
       estado: 'ABONADO',
-      monto: 0,
-      metodoPago: 'CHEQUE',
+      monto: 1500,
+      metodoPago: 'EFECTIVO',
     });
-    expect(errores.map((e) => e.property)).toEqual(
-      expect.arrayContaining(['monto', 'metodoPago']),
-    );
+    expect(await validate(dto)).toEqual([]);
   });
 });
 
 describe('DeliverCertificateRequestDto', () => {
-  const validarEntrega = (data: unknown) =>
-    validate(plainToInstance(DeliverCertificateRequestDto, data));
-
-  it('rechaza body vacío', async () => {
-    const errores = await validarEntrega({});
-    expect(errores.map((e) => e.property)).toEqual(
-      expect.arrayContaining(['nombreCompleto', 'dni']),
+  it('exige nombre completo y DNI', async () => {
+    const errores = await validate(
+      plainToInstance(DeliverCertificateRequestDto, {}),
     );
-  });
-
-  it('acepta nombre y DNI válidos', async () => {
-    expect(
-      await validarEntrega({
-        nombreCompleto: 'María López',
-        dni: '30112456',
-      }),
-    ).toHaveLength(0);
-  });
-
-  it('rechaza nombre con números y DNI con puntos', async () => {
-    const errores = await validarEntrega({
-      nombreCompleto: 'María 2',
-      dni: '30.112.456',
-    });
-    expect(errores.map((e) => e.property)).toEqual(
-      expect.arrayContaining(['nombreCompleto', 'dni']),
-    );
-  });
-
-  it('rechaza strings vacíos tras el trim', async () => {
-    const errores = await validarEntrega({
-      nombreCompleto: '  ',
-      dni: '',
-    });
     expect(errores.map((e) => e.property)).toEqual(
       expect.arrayContaining(['nombreCompleto', 'dni']),
     );

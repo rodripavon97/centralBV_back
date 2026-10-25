@@ -1,15 +1,17 @@
 import type {
   Accident,
+  Certificate,
   CertificateRequest,
   Payment,
   Victim,
 } from './certificate-request.entity.js';
 import { RequestStatus } from './certificate-request.enums.js';
 
-/** Payload to create or update a request (victim + accident). */
+/** Payload to create or update a request (victim + accident + certificate). */
 export interface CertificateRequestData {
   damnificado: Victim;
   siniestro: Accident;
+  constancia: Certificate;
 }
 
 /** Filters and pagination for the request list (US09). */
@@ -46,6 +48,11 @@ export interface CertificateRequestRepository {
     id: string,
     datos: CertificateRequestData,
   ): Promise<CertificateRequest | null>;
+  /** Returns false if the request is not in PENDIENTE. Persists observaciones. */
+  markAsRealized(
+    id: string,
+    observaciones: string | null,
+  ): Promise<boolean>;
   /** Returns false if the request is not in REALIZADA. */
   signRequest(id: string): Promise<boolean>;
   /** Returns null if not FIRMADA or without payment (ABONADO/EXENTO). */

@@ -17,7 +17,7 @@ import {
 /** Query params for the request list (US09). */
 export class ListCertificateRequestsDto {
   @ApiPropertyOptional({
-    description: 'DNI, n.º de solicitud o nombre y apellido',
+    description: 'DNI, n.º de solicitud o nombre del damnificado',
     example: '30.112.456',
   })
   @IsOptional()

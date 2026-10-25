@@ -1,10 +1,10 @@
 /** Allowed accident / certificate types (`tipo_constancia`). */
-export const ACCIDENT_TYPES = [
-  'VIVIENDA',
-  'VEHICULAR',
-  'ACCIDENTE_TRANSITO',
-] as const;
+export const ACCIDENT_TYPES = ['VIVIENDA', 'VEHICULAR'] as const;
 export type AccidentType = (typeof ACCIDENT_TYPES)[number];
+
+/** Destination of the issued certificate (`destino_constancia`). */
+export const CERTIFICATE_DESTINATIONS = ['SEGURO', 'ACCION_SOCIAL'] as const;
+export type CertificateDestination = (typeof CERTIFICATE_DESTINATIONS)[number];
 
 /** Lifecycle statuses of a certificate request. */
 export const REQUEST_STATUSES = [

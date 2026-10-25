@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -9,17 +10,25 @@ import {
   Put,
   Query,
   Req,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiProduces,
+  ApiTags,
+} from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request } from 'express';
 import { RolesGuard } from '../common/guards/roles.guard.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
 import { CertificateRequestService } from './certificate-request.service.js';
+import { CertificatePdfService } from './pdf/certificate-pdf.service.js';
 import { CreateCertificateRequestDto } from './dtos/create-certificate-request.dto.js';
 import { ListCertificateRequestsDto } from './dtos/list-certificate-requests.dto.js';
 import { CancelCertificateRequestDto } from './dtos/cancel-certificate-request.dto.js';
+import { RealizeCertificateRequestDto } from './dtos/realize-certificate-request.dto.js';
 import { AddPaymentDto } from './dtos/add-payment.dto.js';
 import { DeliverCertificateRequestDto } from './dtos/deliver-certificate-request.dto.js';
 
@@ -32,7 +41,10 @@ type RequestWithUser = Request & { user?: { userId?: string } };
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('ADMINISTRATIVO')
 export class CertificateRequestController {
-  constructor(private readonly service: CertificateRequestService) {}
+  constructor(
+    private readonly service: CertificateRequestService,
+    private readonly pdfService: CertificatePdfService,
+  ) {}
 
   /** US09: list with search, filter, sort and pagination. */
   @Roles('ADMINISTRATIVO', 'ADMIN')
@@ -43,6 +55,23 @@ export class CertificateRequestController {
   })
   async list(@Query() query: ListCertificateRequestsDto) {
     return this.service.findAll(query);
+  }
+
+  /** Download the certificate PDF (REALIZADA | FIRMADA | RETIRADA). */
+  @Roles('ADMINISTRATIVO', 'ADMIN')
+  @Get(':id/pdf')
+  @Header('Content-Type', 'application/pdf')
+  @ApiProduces('application/pdf')
+  @ApiOperation({
+    summary:
+      'Descargar el PDF de la constancia (REALIZADA, FIRMADA o RETIRADA)',
+  })
+  async pdf(@Param('id', ParseUUIDPipe) id: string): Promise<StreamableFile> {
+    const { buffer, filename } = await this.pdfService.generatePdf(id);
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `inline; filename="${filename}"`,
+    });
   }
 
   /** Returns the detail of a single request. */
@@ -90,6 +119,33 @@ export class CertificateRequestController {
     return this.service.cancelRequest(id, dto.motivo);
   }
 
+  /**
+   * Mark pending as REALIZADA (optional observaciones) and return the PDF.
+   */
+  @Roles('ADMINISTRATIVO', 'ADMIN')
+  @Patch(':id/generar-constancia')
+  @Header('Content-Type', 'application/pdf')
+  @ApiProduces('application/pdf')
+  @ApiOperation({
+    summary:
+      'Generar constancia (PENDIENTE → REALIZADA) y devolver el PDF de la constancia',
+  })
+  async generarConstancia(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RealizeCertificateRequestDto,
+  ): Promise<StreamableFile> {
+    const observaciones = dto.observaciones ?? null;
+    await this.service.realizeRequest(id, observaciones);
+    const { buffer, filename } = await this.pdfService.generatePdf(
+      id,
+      observaciones,
+    );
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `inline; filename="${filename}"`,
+    });
+  }
+
   /** Sign a request in REALIZADA status (REALIZADA → FIRMADA). */
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Patch(':id/firmar')
@@ -104,8 +160,7 @@ export class CertificateRequestController {
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Patch(':id/abono')
   @ApiOperation({
-    summary:
-      'Registrar o editar abono (falla si está cancelada o entregada)',
+    summary: 'Registrar o editar abono (falla si está cancelada o entregada)',
   })
   async abonar(
     @Param('id', ParseUUIDPipe) id: string,
@@ -118,8 +173,7 @@ export class CertificateRequestController {
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Patch(':id/entregar')
   @ApiOperation({
-    summary:
-      'Marcar una solicitud firmada y abonada como entregada (RETIRADA)',
+    summary: 'Marcar una solicitud firmada y abonada como entregada (RETIRADA)',
   })
   async entregar(
     @Param('id', ParseUUIDPipe) id: string,
