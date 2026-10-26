@@ -434,6 +434,35 @@ describe('CertificateRequestService', () => {
       );
     });
 
+    it('vuelve el abono a PENDIENTE limpiando monto, método y motivo', async () => {
+      repo.findById.mockResolvedValue({
+        ...solicitud('FIRMADA'),
+        abono: {
+          estado: 'ABONADO',
+          monto: 1500,
+          metodoPago: 'EFECTIVO',
+          fechaPago: '2026-10-12T10:00:00Z',
+          motivoExento: null,
+        },
+      });
+      repo.addPayment.mockResolvedValue({ ...solicitud('FIRMADA'), abono: null });
+
+      await service.addPayment(
+        ID,
+        Object.assign(new AddPaymentDto(), { estado: 'PENDIENTE' as const }),
+      );
+
+      expect(repo.addPayment).toHaveBeenCalledWith(
+        ID,
+        expect.objectContaining({
+          estado: 'PENDIENTE',
+          monto: null,
+          metodoPago: null,
+          motivoExento: null,
+        }),
+      );
+    });
+
     it('rechaza abono en solicitud cancelada', async () => {
       repo.findById.mockResolvedValue(solicitud('CANCELADA'));
       await expect(service.addPayment(ID, abonadoDto())).rejects.toBeInstanceOf(
