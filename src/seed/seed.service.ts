@@ -68,8 +68,232 @@ export class SeedService implements OnApplicationBootstrap {
     );
 
     await this.seedCertificateRequests();
+    await this.seedFleet();
 
     this.logger.log('Bootstrap finalizado.');
+  }
+
+  /** Seeds vehicle catalogs and a small operative fleet if missing. */
+  private async seedFleet() {
+    const typeIds = await this.seedVehicleTypes([
+      'Autobomba',
+      'Rescate',
+      'Transporte de personal',
+      'Ambulancia',
+      'Van',
+    ]);
+    const brandIds = await this.seedVehicleBrands([
+      'Iveco',
+      'Mercedes-Benz',
+      'Toyota',
+      'Peugeot',
+      'Ford',
+      'Volkswagen',
+      'Renault',
+    ]);
+    const modelIds = await this.seedVehicleModels([
+      { valor: 'Tector', marca: 'Iveco' },
+      { valor: 'Atego 1726', marca: 'Mercedes-Benz' },
+      { valor: 'F-350', marca: 'Ford' },
+      { valor: 'Hilux', marca: 'Toyota' },
+      { valor: 'Master', marca: 'Renault' },
+      { valor: 'Boxer', marca: 'Peugeot' },
+    ], brandIds);
+
+    await this.seedEmergencyVehicles([
+      {
+        denominacion: 'AB-01',
+        patente: 'AB 123 CD',
+        tipo: 'Autobomba',
+        marca: 'Iveco',
+        modelo: 'Tector',
+      },
+      {
+        denominacion: 'AB-02',
+        patente: 'AC 456 EF',
+        tipo: 'Autobomba',
+        marca: 'Mercedes-Benz',
+        modelo: 'Atego 1726',
+      },
+      {
+        denominacion: 'R-01',
+        patente: 'AD 789 GH',
+        tipo: 'Rescate',
+        marca: 'Ford',
+        modelo: 'F-350',
+      },
+      {
+        denominacion: 'TP-01',
+        patente: 'AE 234 JK',
+        tipo: 'Transporte de personal',
+        marca: 'Toyota',
+        modelo: 'Hilux',
+      },
+      {
+        denominacion: 'A-01',
+        patente: 'AF 567 LM',
+        tipo: 'Ambulancia',
+        marca: 'Renault',
+        modelo: 'Master',
+      },
+      {
+        denominacion: 'V-01',
+        patente: 'AG 890 NP',
+        tipo: 'Van',
+        marca: 'Peugeot',
+        modelo: 'Boxer',
+      },
+    ], typeIds, brandIds, modelIds);
+  }
+
+  private async seedVehicleTypes(
+    valores: string[],
+  ): Promise<Record<string, string>> {
+    const ids: Record<string, string> = {};
+    for (const valor of valores) {
+      const { data: existing } = await this.db
+        .from('tipos_vehiculo')
+        .select('id')
+        .eq('valor', valor)
+        .maybeSingle();
+      if (existing) {
+        ids[valor] = existing.id;
+        continue;
+      }
+      const { data, error } = await this.db
+        .from('tipos_vehiculo')
+        .insert([{ valor, activo: true }])
+        .select('id')
+        .single();
+      if (error) {
+        this.logger.error(`Error creando tipo "${valor}": ${error.message}`);
+        continue;
+      }
+      ids[valor] = data.id;
+      this.logger.log(`Tipo de vehículo creado: ${valor}`);
+    }
+    return ids;
+  }
+
+  private async seedVehicleBrands(
+    valores: string[],
+  ): Promise<Record<string, string>> {
+    const ids: Record<string, string> = {};
+    for (const valor of valores) {
+      const { data: existing } = await this.db
+        .from('marcas_vehiculo')
+        .select('id')
+        .eq('valor', valor)
+        .maybeSingle();
+      if (existing) {
+        ids[valor] = existing.id;
+        continue;
+      }
+      const { data, error } = await this.db
+        .from('marcas_vehiculo')
+        .insert([{ valor, activo: true }])
+        .select('id')
+        .single();
+      if (error) {
+        this.logger.error(`Error creando marca "${valor}": ${error.message}`);
+        continue;
+      }
+      ids[valor] = data.id;
+      this.logger.log(`Marca de vehículo creada: ${valor}`);
+    }
+    return ids;
+  }
+
+  private async seedVehicleModels(
+    models: { valor: string; marca: string }[],
+    brandIds: Record<string, string>,
+  ): Promise<Record<string, string>> {
+    const ids: Record<string, string> = {};
+    for (const model of models) {
+      const marcaId = brandIds[model.marca];
+      if (marcaId == null) {
+        this.logger.error(
+          `No se puede crear modelo "${model.valor}": falta marca ${model.marca}`,
+        );
+        continue;
+      }
+      const key = `${model.marca}:${model.valor}`;
+      const { data: existing } = await this.db
+        .from('modelos_vehiculo')
+        .select('id')
+        .eq('valor', model.valor)
+        .eq('marca_id', marcaId)
+        .maybeSingle();
+      if (existing) {
+        ids[key] = existing.id;
+        continue;
+      }
+      const { data, error } = await this.db
+        .from('modelos_vehiculo')
+        .insert([{ valor: model.valor, marca_id: marcaId, activo: true }])
+        .select('id')
+        .single();
+      if (error) {
+        this.logger.error(
+          `Error creando modelo "${model.valor}": ${error.message}`,
+        );
+        continue;
+      }
+      ids[key] = data.id;
+      this.logger.log(`Modelo de vehículo creado: ${model.valor} (${model.marca})`);
+    }
+    return ids;
+  }
+
+  private async seedEmergencyVehicles(
+    vehicles: {
+      denominacion: string;
+      patente: string;
+      tipo: string;
+      marca: string;
+      modelo: string;
+    }[],
+    typeIds: Record<string, string>,
+    brandIds: Record<string, string>,
+    modelIds: Record<string, string>,
+  ) {
+    for (const v of vehicles) {
+      const { data: existing } = await this.db
+        .from('vehiculos_emergencia')
+        .select('id')
+        .eq('patente', v.patente)
+        .maybeSingle();
+      if (existing) continue;
+
+      const tipoId = typeIds[v.tipo];
+      const marcaId = brandIds[v.marca];
+      const modeloId = modelIds[`${v.marca}:${v.modelo}`];
+      if (tipoId == null || marcaId == null || modeloId == null) {
+        this.logger.error(
+          `No se puede crear móvil "${v.denominacion}": faltan catálogos`,
+        );
+        continue;
+      }
+
+      const { error } = await this.db.from('vehiculos_emergencia').insert([
+        {
+          denominacion: v.denominacion,
+          patente: v.patente,
+          estado: 'OPERATIVO',
+          tipo_id: tipoId,
+          marca_id: marcaId,
+          modelo_id: modeloId,
+          motivo_baja: null,
+        },
+      ]);
+      if (error) {
+        this.logger.error(
+          `Error creando móvil "${v.denominacion}": ${error.message}`,
+        );
+        continue;
+      }
+      this.logger.log(`Móvil operativo creado: ${v.denominacion} (${v.patente})`);
+    }
   }
 
   private async seedRoles() {
