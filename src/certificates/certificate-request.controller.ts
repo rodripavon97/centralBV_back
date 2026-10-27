@@ -27,6 +27,7 @@ import { CertificateRequestService } from './certificate-request.service.js';
 import { CertificatePdfService } from './pdf/certificate-pdf.service.js';
 import { CreateCertificateRequestDto } from './dtos/create-certificate-request.dto.js';
 import { ListCertificateRequestsDto } from './dtos/list-certificate-requests.dto.js';
+import { ListCompletedCertificateRequestsDto } from './dtos/list-completed-certificate-requests.dto.js';
 import { CancelCertificateRequestDto } from './dtos/cancel-certificate-request.dto.js';
 import { RealizeCertificateRequestDto } from './dtos/realize-certificate-request.dto.js';
 import { AddPaymentDto } from './dtos/add-payment.dto.js';
@@ -35,7 +36,7 @@ import { DeliverCertificateRequestDto } from './dtos/deliver-certificate-request
 type RequestWithUser = Request & { user?: { userId?: string } };
 
 /** HTTP API for certificate requests (`/solicitudes`). */
-@ApiTags('Solicitudes')
+@ApiTags('Certificate requests')
 @ApiBearerAuth()
 @Controller('solicitudes')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -46,15 +47,25 @@ export class CertificateRequestController {
     private readonly pdfService: CertificatePdfService,
   ) {}
 
-  /** US09: list with search, filter, sort and pagination. */
+  /** US09: list active requests with search, filter, sort and pagination. */
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Get()
   @ApiOperation({
     summary:
-      'Listar solicitudes con búsqueda, filtro, orden y paginación (US09)',
+      'List active requests with search, filter, sort and pagination',
   })
   async list(@Query() query: ListCertificateRequestsDto) {
     return this.service.findAll(query);
+  }
+
+  /** List completed (RETIRADA) requests with search, sort and pagination. */
+  @Roles('ADMINISTRATIVO', 'ADMIN')
+  @Get('completadas')
+  @ApiOperation({
+    summary: 'List completed requests with search, sort and pagination',
+  })
+  async listCompleted(@Query() query: ListCompletedCertificateRequestsDto) {
+    return this.service.findCompleted(query);
   }
 
   /** Download the certificate PDF (REALIZADA | FIRMADA | RETIRADA). */
@@ -64,7 +75,7 @@ export class CertificateRequestController {
   @ApiProduces('application/pdf')
   @ApiOperation({
     summary:
-      'Descargar el PDF de la constancia (REALIZADA, FIRMADA o RETIRADA)',
+      'Download the certificate PDF (REALIZADA, FIRMADA or RETIRADA)',
   })
   async pdf(@Param('id', ParseUUIDPipe) id: string): Promise<StreamableFile> {
     const { buffer, filename } = await this.pdfService.generatePdf(id);
@@ -77,8 +88,8 @@ export class CertificateRequestController {
   /** Returns the detail of a single request. */
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Get(':id')
-  @ApiOperation({ summary: 'Ver el detalle de una solicitud' })
-  async obtener(@Param('id', ParseUUIDPipe) id: string) {
+  @ApiOperation({ summary: 'Get request detail' })
+  async getById(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.findById(id);
   }
 
@@ -86,7 +97,7 @@ export class CertificateRequestController {
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Post()
   @ApiOperation({
-    summary: 'Dar de alta una solicitud en estado PENDIENTE (US08)',
+    summary: 'Create a request in PENDIENTE status (US08)',
   })
   async create(
     @Body() dto: CreateCertificateRequestDto,
@@ -98,8 +109,8 @@ export class CertificateRequestController {
   /** US13: edit a pending request. */
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Put(':id')
-  @ApiOperation({ summary: 'Editar una solicitud pendiente (US13)' })
-  async actualizar(
+  @ApiOperation({ summary: 'Edit a pending request (US13)' })
+  async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateCertificateRequestDto,
   ) {
@@ -110,9 +121,9 @@ export class CertificateRequestController {
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Patch(':id/cancelar')
   @ApiOperation({
-    summary: 'Cancelar una solicitud pendiente con motivo (US13)',
+    summary: 'Cancel a pending request with a reason (US13)',
   })
-  async cancelar(
+  async cancel(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CancelCertificateRequestDto,
   ) {
@@ -128,17 +139,17 @@ export class CertificateRequestController {
   @ApiProduces('application/pdf')
   @ApiOperation({
     summary:
-      'Generar constancia (PENDIENTE → REALIZADA) y devolver el PDF de la constancia',
+      'Realize certificate (PENDIENTE → REALIZADA) and return the PDF',
   })
-  async generarConstancia(
+  async realize(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RealizeCertificateRequestDto,
   ): Promise<StreamableFile> {
-    const observaciones = dto.observaciones ?? null;
-    await this.service.realizeRequest(id, observaciones);
+    const observations = dto.observaciones ?? null;
+    await this.service.realizeRequest(id, observations);
     const { buffer, filename } = await this.pdfService.generatePdf(
       id,
-      observaciones,
+      observations,
     );
     return new StreamableFile(buffer, {
       type: 'application/pdf',
@@ -150,9 +161,9 @@ export class CertificateRequestController {
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Patch(':id/firmar')
   @ApiOperation({
-    summary: 'Firmar una solicitud en estado REALIZADA',
+    summary: 'Sign a request in REALIZADA status',
   })
-  async firmar(@Param('id', ParseUUIDPipe) id: string) {
+  async sign(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.signRequest(id);
   }
 
@@ -160,9 +171,9 @@ export class CertificateRequestController {
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Patch(':id/abono')
   @ApiOperation({
-    summary: 'Registrar o editar abono (falla si está cancelada o entregada)',
+    summary: 'Register or edit payment (fails if cancelled or delivered)',
   })
-  async abonar(
+  async addPayment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddPaymentDto,
   ) {
@@ -173,9 +184,9 @@ export class CertificateRequestController {
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Patch(':id/entregar')
   @ApiOperation({
-    summary: 'Marcar una solicitud firmada y abonada como entregada (RETIRADA)',
+    summary: 'Mark a signed and paid request as delivered (RETIRADA)',
   })
-  async entregar(
+  async deliver(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: DeliverCertificateRequestDto,
   ) {

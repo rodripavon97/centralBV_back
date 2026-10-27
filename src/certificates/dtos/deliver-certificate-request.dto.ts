@@ -7,21 +7,21 @@ import {
   MaxLength,
 } from 'class-validator';
 
-const recortar = ({ value }: { value: unknown }) =>
+const trimValue = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 
-const SOLO_LETRAS = /^[\p{L}' -]+$/u;
+const LETTERS_ONLY = /^[\p{L}' -]+$/u;
 
 /** Data of the person who picks up the certificate (required on delivery). */
 export class DeliverCertificateRequestDto {
   @ApiProperty({
     example: 'María López',
-    description: 'Nombre completo de quien retira',
+    description: 'Full name of the person picking up',
   })
-  @Transform(recortar)
+  @Transform(trimValue)
   @IsString()
   @IsNotEmpty({ message: 'El nombre completo de quien retira es obligatorio' })
-  @Matches(SOLO_LETRAS, {
+  @Matches(LETTERS_ONLY, {
     message: 'El nombre completo solo admite letras',
   })
   @MaxLength(160)
@@ -29,9 +29,9 @@ export class DeliverCertificateRequestDto {
 
   @ApiProperty({
     example: '30112456',
-    description: 'DNI de quien retira (7 u 8 dígitos, sin puntos)',
+    description: 'DNI of the person picking up (7 or 8 digits, no dots)',
   })
-  @Transform(recortar)
+  @Transform(trimValue)
   @IsString()
   @IsNotEmpty({ message: 'El DNI de quien retira es obligatorio' })
   @Matches(/^\d{7,8}$/, {

@@ -5,7 +5,7 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthGuard } from '@nestjs/passport';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { JwtStrategy } from './strategies/jwt.strategy.js';
+import { JwtStrategy } from '../strategies/jwt.strategy.js';
 
 @Controller('protected')
 class ProtectedController {

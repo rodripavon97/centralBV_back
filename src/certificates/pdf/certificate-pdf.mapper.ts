@@ -1,7 +1,7 @@
 import type { CertificateRequest } from '../domain/certificate-request.entity.js';
-import { ahoraEnArgentina } from '../../common/utils/date.utils.js';
+import { nowInArgentina } from '../../common/utils/date.utils.js';
 
-const MESES = [
+const MONTHS = [
   'ENERO',
   'FEBRERO',
   'MARZO',
@@ -18,21 +18,21 @@ const MESES = [
 
 /** View model consumed by the PDF builder. */
 export interface CertificatePdfViewModel {
-  solicitante: string;
+  applicant: string;
   dni: string;
-  domicilio: string;
-  localidad: string;
-  partido: string;
-  motivo: string;
-  perdidas: string;
-  presentado: string;
-  parte: string;
-  fechaDisplay: string;
-  hora: string;
-  /** Printed below fecha/hora when non-empty. */
-  observaciones: string | null;
-  dominio: string | null;
-  poliza: string | null;
+  address: string;
+  locality: string;
+  district: string;
+  reason: string;
+  losses: string;
+  presentedTo: string;
+  reportNumber: string;
+  dateDisplay: string;
+  time: string;
+  /** Printed below date/time when non-empty. */
+  observations: string | null;
+  vehiclePlate: string | null;
+  policyNumber: string | null;
   footerDate: string;
   filename: string;
 }
@@ -45,57 +45,58 @@ export function formatDni(dni: string): string {
 }
 
 /** Formats YYYY-MM-DD as DD/MM/YYYY. */
-export function formatFechaDisplay(fecha: string): string {
-  const [year, month, day] = fecha.split('-');
+export function formatDateDisplay(date: string): string {
+  const [year, month, day] = date.split('-');
   return `${day}/${month}/${year}`;
 }
 
 /** Builds the emission line "JOSÉ C. PAZ, D DE MES DE YYYY." in Argentina time. */
 export function formatFooterDate(now = new Date()): string {
-  const { fecha } = ahoraEnArgentina(now);
-  const [year, month, day] = fecha.split('-').map(Number);
-  return `JOSÉ C. PAZ, ${day} DE ${MESES[month - 1]} DE ${year}.`;
+  const { date } = nowInArgentina(now);
+  const [year, month, day] = date.split('-').map(Number);
+  return `JOSÉ C. PAZ, ${day} DE ${MONTHS[month - 1]} DE ${year}.`;
 }
 
 /**
  * Maps a certificate request aggregate to the PDF view model.
- * @param observacionesOverride when provided (including null), replaces stored notes
+ * @param observationsOverride when provided (including null), replaces stored notes
  */
 export function toCertificatePdfViewModel(
   request: CertificateRequest,
   now = new Date(),
-  observacionesOverride?: string | null,
+  observationsOverride?: string | null,
 ): CertificatePdfViewModel {
   const { damnificado: d, siniestro: s, constancia: c } = request;
-  const fechaDisplay = formatFechaDisplay(s.fecha);
-  const solicitante = d.nombre;
-  const dominio =
+  const dateDisplay = formatDateDisplay(s.fecha);
+  const applicant = d.nombre;
+  const vehiclePlate =
     s.tipo === 'VEHICULAR' && s.patenteVehiculo ? s.patenteVehiculo : null;
-  const poliza =
+  const policyNumber =
     c.destino === 'SEGURO' && c.numeroPoliza ? c.numeroPoliza : null;
-  const observaciones =
-    observacionesOverride !== undefined
-      ? observacionesOverride
+  const observations =
+    observationsOverride !== undefined
+      ? observationsOverride
       : request.observaciones;
-  const observacionesTexto =
-    observaciones?.trim() ? observaciones.trim() : null;
+  const observationsText = observations?.trim()
+    ? observations.trim()
+    : null;
 
   return {
-    solicitante,
+    applicant,
     dni: formatDni(d.dni),
-    domicilio: s.direccion,
-    localidad: s.localidad,
-    partido: s.partido,
-    motivo: s.motivo,
-    perdidas: s.perdidas,
-    presentado: c.razonSocial,
-    parte: s.numeroParte,
-    fechaDisplay,
-    hora: s.hora,
-    observaciones: observacionesTexto,
-    dominio,
-    poliza,
+    address: s.direccion,
+    locality: s.localidad,
+    district: s.partido,
+    reason: s.motivo,
+    losses: s.perdidas,
+    presentedTo: c.razonSocial,
+    reportNumber: s.numeroParte,
+    dateDisplay,
+    time: s.hora,
+    observations: observationsText,
+    vehiclePlate,
+    policyNumber,
     footerDate: formatFooterDate(now),
-    filename: `Constancia_${solicitante.replace(/\s+/g, '_')}_${fechaDisplay.replace(/\//g, '-')}.pdf`,
+    filename: `Constancia_${applicant.replace(/\s+/g, '_')}_${dateDisplay.replace(/\//g, '-')}.pdf`,
   };
 }

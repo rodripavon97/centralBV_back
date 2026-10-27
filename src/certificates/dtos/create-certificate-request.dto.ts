@@ -17,29 +17,29 @@ import {
   type CertificateDestination,
 } from '../domain/certificate-request.enums.js';
 
-const recortar = ({ value }: { value: unknown }) =>
+const trimValue = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 // Empty optional strings are stored as NULL.
-const recortarOpcional = ({ value }: { value: unknown }) =>
+const trimOptional = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() || null : value;
 
-const SOLO_LETRAS = /^[\p{L}' -]+$/u;
+const LETTERS_ONLY = /^[\p{L}' -]+$/u;
 
 /** Victim (damnificado) fields for create/update. */
 export class VictimDto {
   @ApiProperty({ example: 'Lucía Fernández' })
-  @Transform(recortar)
+  @Transform(trimValue)
   @IsString()
   @IsNotEmpty({ message: 'El nombre es obligatorio' })
-  @Matches(SOLO_LETRAS, { message: 'El nombre solo admite letras' })
+  @Matches(LETTERS_ONLY, { message: 'El nombre solo admite letras' })
   @MaxLength(160)
   nombre: string;
 
   @ApiProperty({
     example: '30112456',
-    description: '7 u 8 dígitos, sin puntos',
+    description: '7 or 8 digits, no dots',
   })
-  @Transform(recortar)
+  @Transform(trimValue)
   @IsString()
   @Matches(/^\d{7,8}$/, {
     message: 'El DNI debe tener 7 u 8 dígitos, sin puntos',
@@ -47,7 +47,7 @@ export class VictimDto {
   dni: string;
 
   @ApiPropertyOptional({ example: '11 5555-0142' })
-  @Transform(recortarOpcional)
+  @Transform(trimOptional)
   @IsOptional()
   @IsString()
   @Matches(/^(?=(?:\D*\d){6})[\d\s()+-]{6,20}$/, {
@@ -62,14 +62,14 @@ export class AccidentDto {
   @IsIn(ACCIDENT_TYPES, { message: 'El tipo de siniestro no es válido' })
   tipo: AccidentType;
 
-  @ApiProperty({ example: '2026-10-11', description: 'Fecha local de Argentina' })
+  @ApiProperty({ example: '2026-10-11', description: 'Argentina local date' })
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
     message: 'La fecha debe tener el formato AAAA-MM-DD',
   })
   fecha: string;
 
-  @ApiProperty({ example: '18:20', description: 'Hora local de Argentina' })
+  @ApiProperty({ example: '18:20', description: 'Argentina local time' })
   @IsString()
   @Matches(/^\d{2}:\d{2}$/, {
     message: 'La hora debe tener el formato HH:mm',
@@ -77,42 +77,42 @@ export class AccidentDto {
   hora: string;
 
   @ApiProperty({ example: 'Calle San Martín 450' })
-  @Transform(recortar)
+  @Transform(trimValue)
   @IsString()
   @IsNotEmpty({ message: 'La dirección es obligatoria' })
   @MaxLength(160)
   direccion: string;
 
   @ApiProperty({ example: 'P-2026-0142' })
-  @Transform(recortar)
+  @Transform(trimValue)
   @IsString()
   @IsNotEmpty({ message: 'El número de parte es obligatorio' })
   @MaxLength(40)
   numeroParte: string;
 
   @ApiProperty({ example: 'Solicitud de constancia para el seguro' })
-  @Transform(recortar)
+  @Transform(trimValue)
   @IsString()
   @IsNotEmpty({ message: 'El motivo es obligatorio' })
   @MaxLength(500)
   motivo: string;
 
   @ApiProperty({ example: 'Morón' })
-  @Transform(recortar)
+  @Transform(trimValue)
   @IsString()
   @IsNotEmpty({ message: 'La localidad es obligatoria' })
   @MaxLength(80)
   localidad: string;
 
   @ApiProperty({ example: 'Morón' })
-  @Transform(recortar)
+  @Transform(trimValue)
   @IsString()
   @IsNotEmpty({ message: 'El partido es obligatorio' })
   @MaxLength(80)
   partido: string;
 
   @ApiProperty({ example: 'Daños en cocina y artefactos' })
-  @Transform(recortar)
+  @Transform(trimValue)
   @IsString()
   @IsNotEmpty({ message: 'Las pérdidas son obligatorias' })
   @MaxLength(2000)
@@ -120,9 +120,9 @@ export class AccidentDto {
 
   @ApiPropertyOptional({
     example: 'AB123CD',
-    description: 'Obligatoria si el tipo es VEHICULAR; no aplica a VIVIENDA',
+    description: 'Required when type is VEHICULAR; not applicable to VIVIENDA',
   })
-  @Transform(recortarOpcional)
+  @Transform(trimOptional)
   @IsOptional()
   @IsString()
   @MaxLength(10)
@@ -139,9 +139,9 @@ export class CertificateDto {
 
   @ApiProperty({
     example: 'La Caja Seguros',
-    description: 'Nombre del seguro o de la acción social a la que se presenta',
+    description: 'Name of the insurer or social-action entity the certificate is for',
   })
-  @Transform(recortar)
+  @Transform(trimValue)
   @IsString()
   @IsNotEmpty({ message: 'La razón social es obligatoria' })
   @MaxLength(160)
@@ -149,9 +149,9 @@ export class CertificateDto {
 
   @ApiPropertyOptional({
     example: 'POL-998877',
-    description: 'Obligatoria si el destino es SEGURO',
+    description: 'Required when destination is SEGURO',
   })
-  @Transform(recortarOpcional)
+  @Transform(trimOptional)
   @IsOptional()
   @IsString()
   @MaxLength(40)

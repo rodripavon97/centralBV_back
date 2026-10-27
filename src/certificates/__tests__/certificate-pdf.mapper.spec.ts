@@ -1,7 +1,7 @@
 import type { CertificateRequest } from '../domain/certificate-request.entity.js';
 import {
   formatDni,
-  formatFechaDisplay,
+  formatDateDisplay,
   toCertificatePdfViewModel,
 } from '../pdf/certificate-pdf.mapper.js';
 
@@ -42,44 +42,44 @@ const base = (): CertificateRequest => ({
 });
 
 describe('certificate-pdf.mapper', () => {
-  it('formatea DNI y fecha de visualización', () => {
+  it('formats DNI and display date', () => {
     expect(formatDni('30112456')).toBe('30.112.456');
-    expect(formatFechaDisplay('2026-10-11')).toBe('11/10/2026');
+    expect(formatDateDisplay('2026-10-11')).toBe('11/10/2026');
   });
 
-  it('mapea campos comunes y póliza para SEGURO', () => {
+  it('maps common fields and policy for SEGURO', () => {
     const view = toCertificatePdfViewModel(base());
-    expect(view.solicitante).toBe('Lucía Fernández');
+    expect(view.applicant).toBe('Lucía Fernández');
     expect(view.dni).toBe('30.112.456');
-    expect(view.domicilio).toBe('Calle San Martín 450');
-    expect(view.presentado).toBe('La Caja Seguros');
-    expect(view.parte).toBe('P-2026-0142');
-    expect(view.fechaDisplay).toBe('11/10/2026');
-    expect(view.hora).toBe('18:20');
-    expect(view.poliza).toBe('POL-998877');
-    expect(view.dominio).toBeNull();
-    expect(view.observaciones).toBeNull();
+    expect(view.address).toBe('Calle San Martín 450');
+    expect(view.presentedTo).toBe('La Caja Seguros');
+    expect(view.reportNumber).toBe('P-2026-0142');
+    expect(view.dateDisplay).toBe('11/10/2026');
+    expect(view.time).toBe('18:20');
+    expect(view.policyNumber).toBe('POL-998877');
+    expect(view.vehiclePlate).toBeNull();
+    expect(view.observations).toBeNull();
     expect(view.filename).toBe(
       'Constancia_Lucía_Fernández_11-10-2026.pdf',
     );
   });
 
-  it('usa observaciones persistidas o el override', () => {
+  it('uses persisted observations or the override', () => {
     const request = base();
     request.observaciones = 'Guardada en DB';
-    expect(toCertificatePdfViewModel(request).observaciones).toBe(
+    expect(toCertificatePdfViewModel(request).observations).toBe(
       'Guardada en DB',
     );
     expect(
       toCertificatePdfViewModel(request, new Date(), 'Solo para esta impresión')
-        .observaciones,
+        .observations,
     ).toBe('Solo para esta impresión');
     expect(
-      toCertificatePdfViewModel(request, new Date(), null).observaciones,
+      toCertificatePdfViewModel(request, new Date(), null).observations,
     ).toBeNull();
   });
 
-  it('incluye dominio para VEHICULAR y omite póliza en ACCION_SOCIAL', () => {
+  it('includes vehicle plate for VEHICULAR and omits policy for ACCION_SOCIAL', () => {
     const request = base();
     request.siniestro.tipo = 'VEHICULAR';
     request.siniestro.patenteVehiculo = 'AB123CD';
@@ -88,8 +88,8 @@ describe('certificate-pdf.mapper', () => {
     request.constancia.razonSocial = 'Acción Social Morón';
 
     const view = toCertificatePdfViewModel(request);
-    expect(view.dominio).toBe('AB123CD');
-    expect(view.poliza).toBeNull();
-    expect(view.presentado).toBe('Acción Social Morón');
+    expect(view.vehiclePlate).toBe('AB123CD');
+    expect(view.policyNumber).toBeNull();
+    expect(view.presentedTo).toBe('Acción Social Morón');
   });
 });

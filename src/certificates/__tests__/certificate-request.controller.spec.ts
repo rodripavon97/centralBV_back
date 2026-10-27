@@ -5,6 +5,7 @@ import { CertificateRequestService } from '../certificate-request.service.js';
 import { CertificatePdfService } from '../pdf/certificate-pdf.service.js';
 import { CreateCertificateRequestDto } from '../dtos/create-certificate-request.dto.js';
 import { ListCertificateRequestsDto } from '../dtos/list-certificate-requests.dto.js';
+import { ListCompletedCertificateRequestsDto } from '../dtos/list-completed-certificate-requests.dto.js';
 import { CancelCertificateRequestDto } from '../dtos/cancel-certificate-request.dto.js';
 import { RealizeCertificateRequestDto } from '../dtos/realize-certificate-request.dto.js';
 import { AddPaymentDto } from '../dtos/add-payment.dto.js';
@@ -16,6 +17,7 @@ describe('CertificateRequestController', () => {
   let controller: CertificateRequestController;
   let service: {
     findAll: ReturnType<typeof vi.fn>;
+    findCompleted: ReturnType<typeof vi.fn>;
     findById: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     updatePending: ReturnType<typeof vi.fn>;
@@ -32,6 +34,7 @@ describe('CertificateRequestController', () => {
   beforeEach(async () => {
     service = {
       findAll: vi.fn(),
+      findCompleted: vi.fn(),
       findById: vi.fn(),
       create: vi.fn(),
       updatePending: vi.fn(),
@@ -57,26 +60,33 @@ describe('CertificateRequestController', () => {
     controller = module.get(CertificateRequestController);
   });
 
-  it('list delega en findAll', async () => {
+  it('list delegates to findAll', async () => {
     const query = new ListCertificateRequestsDto();
     service.findAll.mockResolvedValue({ items: [], total: 0 });
     await controller.list(query);
     expect(service.findAll).toHaveBeenCalledWith(query);
   });
 
-  it('obtener delega en findById', async () => {
+  it('listCompleted delegates to findCompleted', async () => {
+    const query = new ListCompletedCertificateRequestsDto();
+    service.findCompleted.mockResolvedValue({ items: [], total: 0 });
+    await controller.listCompleted(query);
+    expect(service.findCompleted).toHaveBeenCalledWith(query);
+  });
+
+  it('getById delegates to findById', async () => {
     service.findById.mockResolvedValue({ id: ID });
-    await controller.obtener(ID);
+    await controller.getById(ID);
     expect(service.findById).toHaveBeenCalledWith(ID);
   });
 
-  it('pdf delega en CertificatePdfService', async () => {
+  it('pdf delegates to CertificatePdfService', async () => {
     const result = await controller.pdf(ID);
     expect(pdfService.generatePdf).toHaveBeenCalledWith(ID);
     expect(result).toBeInstanceOf(StreamableFile);
   });
 
-  it('create usa el userId del request o null', async () => {
+  it('create uses the request userId or null', async () => {
     const dto = new CreateCertificateRequestDto();
     service.create.mockResolvedValue({ id: ID });
     await controller.create(dto, { user: { userId: 'u-1' } } as never);
@@ -85,45 +95,45 @@ describe('CertificateRequestController', () => {
     expect(service.create).toHaveBeenCalledWith(dto, null);
   });
 
-  it('actualizar delega en updatePending', async () => {
+  it('update delegates to updatePending', async () => {
     const dto = new CreateCertificateRequestDto();
-    await controller.actualizar(ID, dto);
+    await controller.update(ID, dto);
     expect(service.updatePending).toHaveBeenCalledWith(ID, dto);
   });
 
-  it('cancelar pasa el motivo al service', async () => {
+  it('cancel passes the reason to the service', async () => {
     const dto = Object.assign(new CancelCertificateRequestDto(), {
       motivo: 'No corresponde',
     });
-    await controller.cancelar(ID, dto);
+    await controller.cancel(ID, dto);
     expect(service.cancelRequest).toHaveBeenCalledWith(ID, 'No corresponde');
   });
 
-  it('generarConstancia marca REALIZADA, pasa observaciones al PDF y lo devuelve', async () => {
+  it('realize marks REALIZADA, passes observations to the PDF and returns it', async () => {
     const dto = Object.assign(new RealizeCertificateRequestDto(), {
       observaciones: 'Nota',
     });
     service.realizeRequest.mockResolvedValue({ id: ID, estado: 'REALIZADA' });
-    const result = await controller.generarConstancia(ID, dto);
+    const result = await controller.realize(ID, dto);
     expect(service.realizeRequest).toHaveBeenCalledWith(ID, 'Nota');
     expect(pdfService.generatePdf).toHaveBeenCalledWith(ID, 'Nota');
     expect(result).toBeInstanceOf(StreamableFile);
   });
 
-  it('firmar delega en signRequest', async () => {
-    await controller.firmar(ID);
+  it('sign delegates to signRequest', async () => {
+    await controller.sign(ID);
     expect(service.signRequest).toHaveBeenCalledWith(ID);
   });
 
-  it('abonar delega en addPayment', async () => {
+  it('addPayment delegates to addPayment', async () => {
     const dto = new AddPaymentDto();
-    await controller.abonar(ID, dto);
+    await controller.addPayment(ID, dto);
     expect(service.addPayment).toHaveBeenCalledWith(ID, dto);
   });
 
-  it('entregar delega en markAsDelivered', async () => {
+  it('deliver delegates to markAsDelivered', async () => {
     const dto = new DeliverCertificateRequestDto();
-    await controller.entregar(ID, dto);
+    await controller.deliver(ID, dto);
     expect(service.markAsDelivered).toHaveBeenCalledWith(ID, dto);
   });
 });

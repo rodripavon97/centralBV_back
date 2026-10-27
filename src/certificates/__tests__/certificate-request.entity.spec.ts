@@ -5,7 +5,7 @@ import {
 } from '../domain/certificate-request.entity.js';
 
 describe('isModifiable', () => {
-  it('solo permite modificar solicitudes PENDIENTE', () => {
+  it('only allows modifying PENDIENTE requests', () => {
     expect(isModifiable('PENDIENTE')).toBe(true);
     expect(isModifiable('REALIZADA')).toBe(false);
     expect(isModifiable('FIRMADA')).toBe(false);
@@ -15,19 +15,19 @@ describe('isModifiable', () => {
 });
 
 describe('isStatusTransitionValid', () => {
-  it('permite permanecer en el mismo estado', () => {
+  it('allows staying in the same status', () => {
     expect(isStatusTransitionValid('PENDIENTE', 'PENDIENTE')).toBe(true);
     expect(isStatusTransitionValid('FIRMADA', 'FIRMADA')).toBe(true);
   });
 
-  it('permite las transiciones del ciclo feliz', () => {
+  it('allows happy-path transitions', () => {
     expect(isStatusTransitionValid('PENDIENTE', 'REALIZADA')).toBe(true);
     expect(isStatusTransitionValid('PENDIENTE', 'CANCELADA')).toBe(true);
     expect(isStatusTransitionValid('REALIZADA', 'FIRMADA')).toBe(true);
     expect(isStatusTransitionValid('FIRMADA', 'RETIRADA')).toBe(true);
   });
 
-  it('bloquea saltos y estados terminales', () => {
+  it('blocks jumps and terminal statuses', () => {
     expect(isStatusTransitionValid('PENDIENTE', 'FIRMADA')).toBe(false);
     expect(isStatusTransitionValid('REALIZADA', 'RETIRADA')).toBe(false);
     expect(isStatusTransitionValid('FIRMADA', 'CANCELADA')).toBe(false);
@@ -37,7 +37,7 @@ describe('isStatusTransitionValid', () => {
 });
 
 describe('canAdvanceTo', () => {
-  it('exige un cambio real de estado', () => {
+  it('requires a real status change', () => {
     expect(canAdvanceTo('FIRMADA', 'FIRMADA')).toBe(false);
     expect(canAdvanceTo('REALIZADA', 'FIRMADA')).toBe(true);
     expect(canAdvanceTo('PENDIENTE', 'FIRMADA')).toBe(false);

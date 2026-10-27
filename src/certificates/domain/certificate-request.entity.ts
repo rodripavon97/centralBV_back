@@ -10,14 +10,14 @@ import {
   RequestStatus,
 } from './certificate-request.enums.js';
 
-/** Victim (damnificado) linked to the certificate request. */
+/** Victim linked to the certificate request. */
 export interface Victim {
   nombre: string;
   dni: string; // digits only
   telefono: string | null;
 }
 
-/** Accident / incident (siniestro) details for the request. */
+/** Accident / incident details for the request. */
 export interface Accident {
   tipo: AccidentType;
   fecha: string; // YYYY-MM-DD (Argentina)
@@ -50,7 +50,7 @@ export interface Payment {
   motivoExento: string | null;
 }
 
-/** Certificate request aggregate as returned by the API and repository. */
+/** Certificate request aggregate. */
 export interface CertificateRequest {
   id: string;
   numero: string; // "SOL-0001"
@@ -60,7 +60,7 @@ export interface CertificateRequest {
   siniestro: Accident;
   constancia: Certificate;
   abono: Payment | null;
-  /** Notes captured when marking as REALIZADA; shown on the PDF. */
+  /** Notes captured when marking as REALIZADA; shown on the certificate PDF. */
   observaciones: string | null;
 
   motivoCancelacion: string | null;
@@ -100,7 +100,7 @@ export const isStatusTransitionValid = (
   }
 };
 
-/** true if status can advance from current to next (real change + valid transition). */
+/** True if status can advance from current to next (real change + valid transition). */
 export const canAdvanceTo = (
   currentStatus: RequestStatus,
   newStatus: RequestStatus,

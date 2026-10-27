@@ -10,14 +10,14 @@ import {
   Min,
 } from 'class-validator';
 import {
-  REQUEST_STATUSES,
-  type RequestStatus,
+  ACTIVE_REQUEST_STATUSES,
+  type ActiveRequestStatus,
 } from '../domain/certificate-request.enums.js';
 
-/** Query params for the request list (US09). */
+/** Query params for the active request list (US09). Excludes RETIRADA. */
 export class ListCertificateRequestsDto {
   @ApiPropertyOptional({
-    description: 'DNI, n.º de solicitud o nombre del damnificado',
+    description: 'DNI, request number, or victim name',
     example: '30.112.456',
   })
   @IsOptional()
@@ -25,15 +25,15 @@ export class ListCertificateRequestsDto {
   @MaxLength(80)
   busqueda?: string;
 
-  @ApiPropertyOptional({ enum: REQUEST_STATUSES })
+  @ApiPropertyOptional({ enum: ACTIVE_REQUEST_STATUSES })
   @IsOptional()
-  @IsIn(REQUEST_STATUSES, { message: 'El estado no es válido' })
-  estado?: RequestStatus;
+  @IsIn(ACTIVE_REQUEST_STATUSES, { message: 'El estado no es válido' })
+  estado?: ActiveRequestStatus;
 
   @ApiPropertyOptional({
     enum: ['desc', 'asc'],
     default: 'desc',
-    description: 'Por fecha de alta',
+    description: 'By created-at date',
   })
   @IsOptional()
   @IsIn(['desc', 'asc'])

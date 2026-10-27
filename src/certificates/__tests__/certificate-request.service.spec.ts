@@ -14,12 +14,13 @@ import type {
 import type { RequestStatus } from '../domain/certificate-request.enums.js';
 import { CreateCertificateRequestDto } from '../dtos/create-certificate-request.dto.js';
 import { ListCertificateRequestsDto } from '../dtos/list-certificate-requests.dto.js';
+import { ListCompletedCertificateRequestsDto } from '../dtos/list-completed-certificate-requests.dto.js';
 import { AddPaymentDto } from '../dtos/add-payment.dto.js';
 import { DeliverCertificateRequestDto } from '../dtos/deliver-certificate-request.dto.js';
 
 const ID = '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b';
 
-const solicitud = (
+const requestFixture = (
   estado: RequestStatus = 'PENDIENTE',
   abono: Payment | null = null,
 ): CertificateRequest => ({
@@ -58,7 +59,13 @@ const solicitud = (
   retiradoPorDni: null,
 });
 
-const dto = (fecha = '2026-10-11', hora = '18:20') =>
+const dto = (
+  fecha = '2026-10-11',
+  hora = '18:20',
+  tipo = 'VIVIENDA',
+  destino = 'SEGURO',
+  numeroPoliza: string | null = 'POL-998877',
+) =>
   Object.assign(new CreateCertificateRequestDto(), {
     damnificado: {
       nombre: 'Lucía Fernández',
@@ -66,7 +73,7 @@ const dto = (fecha = '2026-10-11', hora = '18:20') =>
       telefono: null,
     },
     siniestro: {
-      tipo: 'VIVIENDA' as const,
+      tipo: tipo,
       fecha,
       hora,
       direccion: 'Calle San Martín 450',
@@ -78,9 +85,9 @@ const dto = (fecha = '2026-10-11', hora = '18:20') =>
       patenteVehiculo: null,
     },
     constancia: {
-      destino: 'SEGURO' as const,
+      destino: destino,
       razonSocial: 'La Caja Seguros',
-      numeroPoliza: 'POL-998877',
+      numeroPoliza: numeroPoliza,
     },
   });
 
@@ -88,6 +95,7 @@ describe('CertificateRequestService', () => {
   let service: CertificateRequestService;
   let repo: {
     findAll: ReturnType<typeof vi.fn>;
+    findCompleted: ReturnType<typeof vi.fn>;
     findById: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     updatePending: ReturnType<typeof vi.fn>;
@@ -101,6 +109,7 @@ describe('CertificateRequestService', () => {
   beforeEach(async () => {
     repo = {
       findAll: vi.fn(),
+      findCompleted: vi.fn(),
       findById: vi.fn(),
       create: vi.fn(),
       updatePending: vi.fn(),
@@ -120,13 +129,13 @@ describe('CertificateRequestService', () => {
   });
 
   describe('findAll (US09)', () => {
-    it('calcula las páginas con 20 registros por página', async () => {
-      repo.findAll.mockResolvedValue({ items: [solicitud()], total: 47 });
+    it('computes pages with 20 records per page', async () => {
+      repo.findAll.mockResolvedValue({ items: [requestFixture()], total: 47 });
       const query = Object.assign(new ListCertificateRequestsDto(), {
         pagina: 2,
       });
 
-      const resultado = await service.findAll(query);
+      const result = await service.findAll(query);
 
       expect(repo.findAll).toHaveBeenCalledWith({
         busqueda: undefined,
@@ -135,7 +144,7 @@ describe('CertificateRequestService', () => {
         pagina: 2,
         porPagina: 20,
       });
-      expect(resultado).toMatchObject({
+      expect(result).toMatchObject({
         total: 47,
         pagina: 2,
         paginas: 3,
@@ -143,15 +152,15 @@ describe('CertificateRequestService', () => {
       });
     });
 
-    it('limita la página pedida a la última que existe', async () => {
+    it('clamps the requested page to the last existing page', async () => {
       repo.findAll.mockResolvedValue({ items: [], total: 5 });
-      const resultado = await service.findAll(
+      const result = await service.findAll(
         Object.assign(new ListCertificateRequestsDto(), { pagina: 9 }),
       );
-      expect(resultado).toMatchObject({ pagina: 1, paginas: 1 });
+      expect(result).toMatchObject({ pagina: 1, paginas: 1 });
     });
 
-    it('ignora una búsqueda vacía', async () => {
+    it('ignores an empty search', async () => {
       repo.findAll.mockResolvedValue({ items: [], total: 0 });
       await service.findAll(
         Object.assign(new ListCertificateRequestsDto(), { busqueda: '   ' }),
@@ -160,10 +169,63 @@ describe('CertificateRequestService', () => {
     });
   });
 
+  describe('findCompleted', () => {
+    it('computes pages with 20 records per page', async () => {
+      repo.findCompleted.mockResolvedValue({
+        items: [requestFixture('RETIRADA')],
+        total: 47,
+      });
+      const query = Object.assign(new ListCompletedCertificateRequestsDto(), {
+        pagina: 2,
+      });
+
+      const result = await service.findCompleted(query);
+
+      expect(repo.findCompleted).toHaveBeenCalledWith({
+        busqueda: undefined,
+        orden: 'desc',
+        pagina: 2,
+        porPagina: 20,
+      });
+      expect(result).toMatchObject({
+        total: 47,
+        pagina: 2,
+        paginas: 3,
+        porPagina: 20,
+      });
+    });
+
+    it('clamps the requested page to the last existing page', async () => {
+      repo.findCompleted.mockResolvedValue({ items: [], total: 5 });
+      const result = await service.findCompleted(
+        Object.assign(new ListCompletedCertificateRequestsDto(), {
+          pagina: 9,
+        }),
+      );
+      expect(result).toMatchObject({ pagina: 1, paginas: 1 });
+    });
+
+    it('ignores an empty search and does not send estado', async () => {
+      repo.findCompleted.mockResolvedValue({ items: [], total: 0 });
+      await service.findCompleted(
+        Object.assign(new ListCompletedCertificateRequestsDto(), {
+          busqueda: '   ',
+        }),
+      );
+      expect(repo.findCompleted).toHaveBeenCalledWith({
+        busqueda: undefined,
+        orden: 'desc',
+        pagina: 1,
+        porPagina: 20,
+      });
+      expect(repo.findCompleted.mock.calls[0][0]).not.toHaveProperty('estado');
+    });
+  });
+
   describe('create (US08)', () => {
-    it('guarda la solicitud con el usuario que la carga', async () => {
-      repo.create.mockResolvedValue(solicitud());
-      await service.create(dto(), 'usuario-1');
+    it('saves the request with the user who creates it', async () => {
+      repo.create.mockResolvedValue(requestFixture());
+      await service.create(dto(), 'user-1');
       expect(repo.create).toHaveBeenCalledWith(
         expect.objectContaining({
           siniestro: expect.objectContaining({
@@ -178,24 +240,24 @@ describe('CertificateRequestService', () => {
             numeroPoliza: 'POL-998877',
           }),
         }),
-        'usuario-1',
+        'user-1',
       );
     });
 
-    it('rechaza una fecha que no existe', async () => {
+    it('rejects a non-existent date', async () => {
       await expect(
         service.create(dto('2026-02-30', '10:00'), null),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(repo.create).not.toHaveBeenCalled();
     });
 
-    it('rechaza una fecha futura', async () => {
+    it('rejects a future date', async () => {
       await expect(
         service.create(dto('2999-01-01', '10:00'), null),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('exige patente cuando el tipo es VEHICULAR', async () => {
+    it('requires a plate when type is VEHICULAR', async () => {
       const body = dto();
       body.siniestro.tipo = 'VEHICULAR';
       body.siniestro.patenteVehiculo = null;
@@ -204,7 +266,7 @@ describe('CertificateRequestService', () => {
       );
     });
 
-    it('exige póliza cuando el destino es SEGURO', async () => {
+    it('requires a policy when destination is SEGURO', async () => {
       const body = dto();
       body.constancia.numeroPoliza = null;
       await expect(service.create(body, null)).rejects.toBeInstanceOf(
@@ -212,7 +274,7 @@ describe('CertificateRequestService', () => {
       );
     });
 
-    it('rechaza póliza cuando el destino es ACCION_SOCIAL', async () => {
+    it('rejects a policy when destination is ACCION_SOCIAL', async () => {
       const body = dto();
       body.constancia.destino = 'ACCION_SOCIAL';
       body.constancia.numeroPoliza = 'POL-1';
@@ -223,32 +285,32 @@ describe('CertificateRequestService', () => {
   });
 
   describe('findById', () => {
-    it('devuelve 404 si la solicitud no existe', async () => {
+    it('returns 404 if the request does not exist', async () => {
       repo.findById.mockResolvedValue(null);
       await expect(service.findById(ID)).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
 
-    it('devuelve la solicitud si existe', async () => {
-      repo.findById.mockResolvedValue(solicitud());
+    it('returns the request if it exists', async () => {
+      repo.findById.mockResolvedValue(requestFixture());
       await expect(service.findById(ID)).resolves.toMatchObject({ id: ID });
     });
   });
 
   describe('updatePending (US13)', () => {
-    it('edita una solicitud pendiente', async () => {
-      repo.findById.mockResolvedValue(solicitud());
-      repo.updatePending.mockResolvedValue(solicitud());
+    it('edits a pending request', async () => {
+      repo.findById.mockResolvedValue(requestFixture());
+      repo.updatePending.mockResolvedValue(requestFixture());
       await expect(service.updatePending(ID, dto())).resolves.toMatchObject({
         estado: 'PENDIENTE',
       });
     });
 
     it.each(['REALIZADA', 'FIRMADA', 'RETIRADA', 'CANCELADA'] as const)(
-      'no permite editar una solicitud %s',
+      'does not allow editing a %s request',
       async (estado) => {
-        repo.findById.mockResolvedValue(solicitud(estado));
+        repo.findById.mockResolvedValue(requestFixture(estado));
         await expect(service.updatePending(ID, dto())).rejects.toBeInstanceOf(
           ConflictException,
         );
@@ -256,8 +318,8 @@ describe('CertificateRequestService', () => {
       },
     );
 
-    it('devuelve conflicto si dejó de estar pendiente mientras se editaba', async () => {
-      repo.findById.mockResolvedValue(solicitud());
+    it('returns conflict if it stopped being pending while editing', async () => {
+      repo.findById.mockResolvedValue(requestFixture());
       repo.updatePending.mockResolvedValue(null);
       await expect(service.updatePending(ID, dto())).rejects.toBeInstanceOf(
         ConflictException,
@@ -266,29 +328,29 @@ describe('CertificateRequestService', () => {
   });
 
   describe('cancelRequest (US13)', () => {
-    it('cancela una solicitud pendiente con su motivo', async () => {
-      repo.findById.mockResolvedValue(solicitud());
+    it('cancels a pending request with its reason', async () => {
+      repo.findById.mockResolvedValue(requestFixture());
       repo.cancelPending.mockResolvedValue({
-        ...solicitud('CANCELADA'),
+        ...requestFixture('CANCELADA'),
         motivoCancelacion: 'No corresponde',
       });
 
-      const resultado = await service.cancelRequest(ID, 'No corresponde');
+      const result = await service.cancelRequest(ID, 'No corresponde');
 
       expect(repo.cancelPending).toHaveBeenCalledWith(ID, 'No corresponde');
-      expect(resultado.estado).toBe('CANCELADA');
+      expect(result.estado).toBe('CANCELADA');
     });
 
-    it('no permite cancelar una solicitud firmada', async () => {
-      repo.findById.mockResolvedValue(solicitud('FIRMADA'));
+    it('does not allow cancelling a signed request', async () => {
+      repo.findById.mockResolvedValue(requestFixture('FIRMADA'));
       await expect(
         service.cancelRequest(ID, 'No corresponde'),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(repo.cancelPending).not.toHaveBeenCalled();
     });
 
-    it('devuelve conflicto si dejó de estar pendiente al cancelar', async () => {
-      repo.findById.mockResolvedValue(solicitud());
+    it('returns conflict if it stopped being pending when cancelling', async () => {
+      repo.findById.mockResolvedValue(requestFixture());
       repo.cancelPending.mockResolvedValue(null);
       await expect(
         service.cancelRequest(ID, 'No corresponde'),
@@ -297,11 +359,11 @@ describe('CertificateRequestService', () => {
   });
 
   describe('realizeRequest', () => {
-    it('realiza una solicitud en estado PENDIENTE', async () => {
-      const realizada = solicitud('REALIZADA');
+    it('realizes a request in PENDIENTE status', async () => {
+      const realized = requestFixture('REALIZADA');
       repo.findById
-        .mockResolvedValueOnce(solicitud('PENDIENTE'))
-        .mockResolvedValueOnce(realizada);
+        .mockResolvedValueOnce(requestFixture('PENDIENTE'))
+        .mockResolvedValueOnce(realized);
       repo.markAsRealized.mockResolvedValue(true);
 
       await expect(
@@ -313,9 +375,9 @@ describe('CertificateRequestService', () => {
     });
 
     it.each(['REALIZADA', 'FIRMADA', 'RETIRADA', 'CANCELADA'] as const)(
-      'no permite realizar una solicitud %s',
+      'does not allow realizing a %s request',
       async (estado) => {
-        repo.findById.mockResolvedValue(solicitud(estado));
+        repo.findById.mockResolvedValue(requestFixture(estado));
         await expect(service.realizeRequest(ID)).rejects.toBeInstanceOf(
           ConflictException,
         );
@@ -323,8 +385,8 @@ describe('CertificateRequestService', () => {
       },
     );
 
-    it('devuelve conflicto si el repo no pudo realizar', async () => {
-      repo.findById.mockResolvedValue(solicitud('PENDIENTE'));
+    it('returns conflict if the repo could not realize', async () => {
+      repo.findById.mockResolvedValue(requestFixture('PENDIENTE'));
       repo.markAsRealized.mockResolvedValue(false);
       await expect(service.realizeRequest(ID)).rejects.toBeInstanceOf(
         ConflictException,
@@ -333,11 +395,11 @@ describe('CertificateRequestService', () => {
   });
 
   describe('signRequest', () => {
-    it('firma una solicitud en estado REALIZADA', async () => {
-      const firmada = solicitud('FIRMADA');
+    it('signs a request in REALIZADA status', async () => {
+      const signed = requestFixture('FIRMADA');
       repo.findById
-        .mockResolvedValueOnce(solicitud('REALIZADA'))
-        .mockResolvedValueOnce(firmada);
+        .mockResolvedValueOnce(requestFixture('REALIZADA'))
+        .mockResolvedValueOnce(signed);
       repo.signRequest.mockResolvedValue(true);
 
       await expect(service.signRequest(ID)).resolves.toMatchObject({
@@ -347,9 +409,9 @@ describe('CertificateRequestService', () => {
     });
 
     it.each(['PENDIENTE', 'FIRMADA', 'RETIRADA', 'CANCELADA'] as const)(
-      'no permite firmar una solicitud %s',
+      'does not allow signing a %s request',
       async (estado) => {
-        repo.findById.mockResolvedValue(solicitud(estado));
+        repo.findById.mockResolvedValue(requestFixture(estado));
         await expect(service.signRequest(ID)).rejects.toBeInstanceOf(
           ConflictException,
         );
@@ -357,8 +419,8 @@ describe('CertificateRequestService', () => {
       },
     );
 
-    it('devuelve conflicto si el repo no pudo firmar', async () => {
-      repo.findById.mockResolvedValue(solicitud('REALIZADA'));
+    it('returns conflict if the repo could not sign', async () => {
+      repo.findById.mockResolvedValue(requestFixture('REALIZADA'));
       repo.signRequest.mockResolvedValue(false);
       await expect(service.signRequest(ID)).rejects.toBeInstanceOf(
         ConflictException,
@@ -367,22 +429,22 @@ describe('CertificateRequestService', () => {
   });
 
   describe('addPayment', () => {
-    const abonadoDto = () =>
+    const paidDto = () =>
       Object.assign(new AddPaymentDto(), {
         estado: 'ABONADO' as const,
         monto: 1500,
         metodoPago: 'EFECTIVO' as const,
       });
 
-    const exentoDto = () =>
+    const exemptDto = () =>
       Object.assign(new AddPaymentDto(), {
         estado: 'EXENTO' as const,
         motivoExento: 'Acción social',
       });
 
-    it('registra un abono ABONADO', async () => {
-      const conAbono = {
-        ...solicitud('FIRMADA'),
+    it('registers an ABONADO payment', async () => {
+      const withPayment = {
+        ...requestFixture('FIRMADA'),
         abono: {
           estado: 'ABONADO' as const,
           monto: 1500,
@@ -391,10 +453,10 @@ describe('CertificateRequestService', () => {
           motivoExento: null,
         },
       };
-      repo.findById.mockResolvedValue(solicitud('FIRMADA'));
-      repo.addPayment.mockResolvedValue(conAbono);
+      repo.findById.mockResolvedValue(requestFixture('FIRMADA'));
+      repo.addPayment.mockResolvedValue(withPayment);
 
-      const resultado = await service.addPayment(ID, abonadoDto());
+      const result = await service.addPayment(ID, paidDto());
 
       expect(repo.addPayment).toHaveBeenCalledWith(
         ID,
@@ -405,13 +467,13 @@ describe('CertificateRequestService', () => {
           motivoExento: null,
         }),
       );
-      expect(resultado.abono?.estado).toBe('ABONADO');
+      expect(result.abono?.estado).toBe('ABONADO');
     });
 
-    it('registra un abono EXENTO', async () => {
-      repo.findById.mockResolvedValue(solicitud('REALIZADA'));
+    it('registers an EXENTO payment', async () => {
+      repo.findById.mockResolvedValue(requestFixture('REALIZADA'));
       repo.addPayment.mockResolvedValue({
-        ...solicitud('REALIZADA'),
+        ...requestFixture('REALIZADA'),
         abono: {
           estado: 'EXENTO',
           monto: null,
@@ -421,7 +483,7 @@ describe('CertificateRequestService', () => {
         },
       });
 
-      await service.addPayment(ID, exentoDto());
+      await service.addPayment(ID, exemptDto());
 
       expect(repo.addPayment).toHaveBeenCalledWith(
         ID,
@@ -433,10 +495,9 @@ describe('CertificateRequestService', () => {
         }),
       );
     });
-
     it('vuelve el abono a PENDIENTE limpiando monto, método y motivo', async () => {
       repo.findById.mockResolvedValue({
-        ...solicitud('FIRMADA'),
+        ...requestFixture('FIRMADA'),
         abono: {
           estado: 'ABONADO',
           monto: 1500,
@@ -445,7 +506,10 @@ describe('CertificateRequestService', () => {
           motivoExento: null,
         },
       });
-      repo.addPayment.mockResolvedValue({ ...solicitud('FIRMADA'), abono: null });
+      repo.addPayment.mockResolvedValue({
+        ...requestFixture('FIRMADA'),
+        abono: null,
+      });
 
       await service.addPayment(
         ID,
@@ -463,61 +527,58 @@ describe('CertificateRequestService', () => {
       );
     });
 
-    it('rechaza abono en solicitud cancelada', async () => {
-      repo.findById.mockResolvedValue(solicitud('CANCELADA'));
-      await expect(service.addPayment(ID, abonadoDto())).rejects.toBeInstanceOf(
+    it('rejects payment on a cancelled request', async () => {
+      repo.findById.mockResolvedValue(requestFixture('CANCELADA'));
+      await expect(service.addPayment(ID, paidDto())).rejects.toBeInstanceOf(
         ConflictException,
       );
       expect(repo.addPayment).not.toHaveBeenCalled();
     });
 
-    it('al editar un abono conserva la fecha de pago original', async () => {
-      const fechaOriginal = '2026-10-12T10:00:00Z';
+    it('keeps the original payment date when editing a payment', async () => {
+      const originalDate = '2026-10-12T10:00:00Z';
       repo.findById.mockResolvedValue(
-        solicitud('FIRMADA', {
+        requestFixture('FIRMADA', {
           estado: 'ABONADO',
           monto: 100,
           metodoPago: 'EFECTIVO',
-          fechaPago: fechaOriginal,
+          fechaPago: originalDate,
           motivoExento: null,
         }),
       );
       repo.addPayment.mockResolvedValue(
-        solicitud('FIRMADA', {
+        requestFixture('FIRMADA', {
           estado: 'ABONADO',
           monto: 1500,
           metodoPago: 'EFECTIVO',
-          fechaPago: fechaOriginal,
+          fechaPago: originalDate,
           motivoExento: null,
         }),
       );
 
-      await service.addPayment(ID, abonadoDto());
+      await service.addPayment(ID, paidDto());
 
       expect(repo.addPayment).toHaveBeenCalledWith(
         ID,
-        expect.objectContaining({ fechaPago: fechaOriginal }),
+        expect.objectContaining({ fechaPago: originalDate }),
       );
     });
 
-    it('rechaza EXENTO con monto o método', async () => {
-      repo.findById.mockResolvedValue(solicitud());
+    it('rejects EXENTO with amount or method', async () => {
+      repo.findById.mockResolvedValue(requestFixture());
       await expect(
-        service.addPayment(
-          ID,
-          Object.assign(exentoDto(), { monto: 100 }),
-        ),
+        service.addPayment(ID, Object.assign(exemptDto(), { monto: 100 })),
       ).rejects.toBeInstanceOf(BadRequestException);
       await expect(
         service.addPayment(
           ID,
-          Object.assign(exentoDto(), { metodoPago: 'EFECTIVO' }),
+          Object.assign(exemptDto(), { metodoPago: 'EFECTIVO' }),
         ),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('rechaza EXENTO sin motivo', async () => {
-      repo.findById.mockResolvedValue(solicitud());
+    it('rejects EXENTO without a reason', async () => {
+      repo.findById.mockResolvedValue(requestFixture());
       await expect(
         service.addPayment(
           ID,
@@ -529,8 +590,8 @@ describe('CertificateRequestService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('rechaza ABONADO sin monto o método', async () => {
-      repo.findById.mockResolvedValue(solicitud());
+    it('rejects ABONADO without amount or method', async () => {
+      repo.findById.mockResolvedValue(requestFixture());
       await expect(
         service.addPayment(
           ID,
@@ -548,17 +609,17 @@ describe('CertificateRequestService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('devuelve conflicto si el repo no pudo registrar el abono', async () => {
-      repo.findById.mockResolvedValue(solicitud());
+    it('returns conflict if the repo could not register the payment', async () => {
+      repo.findById.mockResolvedValue(requestFixture());
       repo.addPayment.mockResolvedValue(null);
-      await expect(service.addPayment(ID, abonadoDto())).rejects.toBeInstanceOf(
+      await expect(service.addPayment(ID, paidDto())).rejects.toBeInstanceOf(
         ConflictException,
       );
     });
   });
 
   describe('markAsDelivered', () => {
-    const abonoOk: Payment = {
+    const paymentOk: Payment = {
       estado: 'ABONADO',
       monto: 1500,
       metodoPago: 'EFECTIVO',
@@ -566,29 +627,29 @@ describe('CertificateRequestService', () => {
       motivoExento: null,
     };
 
-    it('entrega una solicitud firmada y abonada', async () => {
-      const entregada = {
-        ...solicitud('RETIRADA', abonoOk),
+    it('delivers a signed and paid request', async () => {
+      const delivered = {
+        ...requestFixture('RETIRADA', paymentOk),
         retiradoPorNombre: 'María López',
         retiradoPorDni: '30112456',
       };
-      repo.findById.mockResolvedValue(solicitud('FIRMADA', abonoOk));
-      repo.markAsDelivered.mockResolvedValue(entregada);
+      repo.findById.mockResolvedValue(requestFixture('FIRMADA', paymentOk));
+      repo.markAsDelivered.mockResolvedValue(delivered);
 
-      const dtoEntrega = Object.assign(new DeliverCertificateRequestDto(), {
+      const deliveryDto = Object.assign(new DeliverCertificateRequestDto(), {
         nombreCompleto: 'María López',
         dni: '30112456',
       });
-      const resultado = await service.markAsDelivered(ID, dtoEntrega);
+      const result = await service.markAsDelivered(ID, deliveryDto);
 
       expect(repo.markAsDelivered).toHaveBeenCalledWith(ID, {
         nombreCompleto: 'María López',
         dni: '30112456',
       });
-      expect(resultado.estado).toBe('RETIRADA');
+      expect(result.estado).toBe('RETIRADA');
     });
 
-    it('entrega con abono EXENTO', async () => {
+    it('delivers with an EXENTO payment', async () => {
       const exento: Payment = {
         estado: 'EXENTO',
         monto: null,
@@ -596,14 +657,16 @@ describe('CertificateRequestService', () => {
         fechaPago: '2026-10-12T10:00:00Z',
         motivoExento: 'Acción social',
       };
-      const dtoEntrega = Object.assign(new DeliverCertificateRequestDto(), {
+      const deliveryDto = Object.assign(new DeliverCertificateRequestDto(), {
         nombreCompleto: 'María López',
         dni: '30112456',
       });
-      repo.findById.mockResolvedValue(solicitud('FIRMADA', exento));
-      repo.markAsDelivered.mockResolvedValue(solicitud('RETIRADA', exento));
+      repo.findById.mockResolvedValue(requestFixture('FIRMADA', exento));
+      repo.markAsDelivered.mockResolvedValue(
+        requestFixture('RETIRADA', exento),
+      );
 
-      await service.markAsDelivered(ID, dtoEntrega);
+      await service.markAsDelivered(ID, deliveryDto);
 
       expect(repo.markAsDelivered).toHaveBeenCalledWith(ID, {
         nombreCompleto: 'María López',
@@ -611,38 +674,38 @@ describe('CertificateRequestService', () => {
       });
     });
 
-    it('no entrega si no está FIRMADA', async () => {
-      const dtoEntrega = Object.assign(new DeliverCertificateRequestDto(), {
+    it('does not deliver if not FIRMADA', async () => {
+      const deliveryDto = Object.assign(new DeliverCertificateRequestDto(), {
         nombreCompleto: 'María López',
         dni: '30112456',
       });
-      repo.findById.mockResolvedValue(solicitud('REALIZADA', abonoOk));
+      repo.findById.mockResolvedValue(requestFixture('REALIZADA', paymentOk));
       await expect(
-        service.markAsDelivered(ID, dtoEntrega),
+        service.markAsDelivered(ID, deliveryDto),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(repo.markAsDelivered).not.toHaveBeenCalled();
     });
 
-    it('no entrega si no tiene abono', async () => {
-      const dtoEntrega = Object.assign(new DeliverCertificateRequestDto(), {
+    it('does not deliver without a payment', async () => {
+      const deliveryDto = Object.assign(new DeliverCertificateRequestDto(), {
         nombreCompleto: 'María López',
         dni: '30112456',
       });
-      repo.findById.mockResolvedValue(solicitud('FIRMADA'));
+      repo.findById.mockResolvedValue(requestFixture('FIRMADA'));
       await expect(
-        service.markAsDelivered(ID, dtoEntrega),
+        service.markAsDelivered(ID, deliveryDto),
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('devuelve conflicto si el repo no pudo marcar la entrega', async () => {
-      const dtoEntrega = Object.assign(new DeliverCertificateRequestDto(), {
+    it('returns conflict if the repo could not mark delivery', async () => {
+      const deliveryDto = Object.assign(new DeliverCertificateRequestDto(), {
         nombreCompleto: 'María López',
         dni: '30112456',
       });
-      repo.findById.mockResolvedValue(solicitud('FIRMADA', abonoOk));
+      repo.findById.mockResolvedValue(requestFixture('FIRMADA', paymentOk));
       repo.markAsDelivered.mockResolvedValue(null);
       await expect(
-        service.markAsDelivered(ID, dtoEntrega),
+        service.markAsDelivered(ID, deliveryDto),
       ).rejects.toBeInstanceOf(ConflictException);
     });
   });

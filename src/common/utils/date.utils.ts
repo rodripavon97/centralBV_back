@@ -1,40 +1,40 @@
 const TIME_ZONE = 'America/Argentina/Buenos_Aires';
 
-/** Fecha y hora actual en Argentina. */
-export function ahoraEnArgentina(fecha = new Date()): {
-  fecha: string;
-  hora: string;
+/** Current date and time in Argentina. */
+export function nowInArgentina(date = new Date()): {
+  date: string;
+  time: string;
 } {
-  // sv-SE formatea como "2026-10-22 09:15:00"
-  const local = fecha
+  // "sv-SE" formats as "2026-10-22 09:15:00"
+  const local = date
     .toLocaleString('sv-SE', { timeZone: TIME_ZONE })
     .replace(' ', 'T')
     .slice(0, 16);
-  return { fecha: local.slice(0, 10), hora: local.slice(11, 16) };
+  return { date: local.slice(0, 10), time: local.slice(11, 16) };
 }
 
-/** true si fecha (AAAA-MM-DD) y hora (HH:mm) existen en el calendario. */
-export function esFechaHoraValida(fecha: string, hora: string): boolean {
-  const mFecha = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fecha);
-  const mHora = /^(\d{2}):(\d{2})$/.exec(hora);
-  if (!mFecha || !mHora) return false;
-  const [a, mes, d] = mFecha.slice(1).map(Number);
-  const [h, min] = mHora.slice(1).map(Number);
-  const date = new Date(Date.UTC(a, mes - 1, d));
+/** True if date (YYYY-MM-DD) and time (HH:mm) exist in the calendar. */
+export function isValidDateAndTime(date: string, time: string): boolean {
+  const mDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const mTime = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!mDate || !mTime) return false;
+  const [year, month, day] = mDate.slice(1).map(Number);
+  const [hour, minute] = mTime.slice(1).map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day));
   return (
-    date.getUTCMonth() === mes - 1 &&
-    date.getUTCDate() === d &&
-    h <= 23 &&
-    min <= 59
+    d.getUTCMonth() === month - 1 &&
+    d.getUTCDate() === day &&
+    hour <= 23 &&
+    minute <= 59
   );
 }
 
-/** true si (fecha, hora) es estrictamente posterior a (refFecha, refHora). */
-export function esPosteriorA(
-  fecha: string,
-  hora: string,
-  refFecha: string,
-  refHora: string,
+/** True if (date, time) is strictly after (referenceDate, referenceTime). */
+export function isStrictlyAfter(
+  date: string,
+  time: string,
+  referenceDate: string,
+  referenceTime: string,
 ): boolean {
-  return `${fecha}T${hora}` > `${refFecha}T${refHora}`;
+  return `${date}T${time}` > `${referenceDate}T${referenceTime}`;
 }
