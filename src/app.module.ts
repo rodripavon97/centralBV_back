@@ -7,6 +7,7 @@ import { RolesModule } from './roles/roles.modules.js';
 import { SeedModule } from './seed/seed.module.js';
 import { HealthModule } from './health/health.module.js';
 import { CertificateRequestModule } from './certificates/certificate-request.module.js';
+import { FleetModule } from './fleet/fleet.module.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { CertificateRequestModule } from './certificates/certificate-request.mod
     RolesModule,
     SeedModule,
     CertificateRequestModule,
+    FleetModule,
   ],
 })
 export class AppModule {}
