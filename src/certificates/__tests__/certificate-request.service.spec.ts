@@ -59,7 +59,13 @@ const requestFixture = (
   retiradoPorDni: null,
 });
 
-const dto = (fecha = '2026-10-11', hora = '18:20') =>
+const dto = (
+  fecha = '2026-10-11',
+  hora = '18:20',
+  tipo = 'VIVIENDA',
+  destino = 'SEGURO',
+  numeroPoliza: string | null = 'POL-998877',
+) =>
   Object.assign(new CreateCertificateRequestDto(), {
     damnificado: {
       nombre: 'Lucía Fernández',
@@ -67,7 +73,7 @@ const dto = (fecha = '2026-10-11', hora = '18:20') =>
       telefono: null,
     },
     siniestro: {
-      tipo: 'VIVIENDA' as const,
+      tipo: tipo,
       fecha,
       hora,
       direccion: 'Calle San Martín 450',
@@ -79,9 +85,9 @@ const dto = (fecha = '2026-10-11', hora = '18:20') =>
       patenteVehiculo: null,
     },
     constancia: {
-      destino: 'SEGURO' as const,
+      destino: destino,
       razonSocial: 'La Caja Seguros',
-      numeroPoliza: 'POL-998877',
+      numeroPoliza: numeroPoliza,
     },
   });
 
@@ -489,6 +495,37 @@ describe('CertificateRequestService', () => {
         }),
       );
     });
+    it('vuelve el abono a PENDIENTE limpiando monto, método y motivo', async () => {
+      repo.findById.mockResolvedValue({
+        ...requestFixture('FIRMADA'),
+        abono: {
+          estado: 'ABONADO',
+          monto: 1500,
+          metodoPago: 'EFECTIVO',
+          fechaPago: '2026-10-12T10:00:00Z',
+          motivoExento: null,
+        },
+      });
+      repo.addPayment.mockResolvedValue({
+        ...requestFixture('FIRMADA'),
+        abono: null,
+      });
+
+      await service.addPayment(
+        ID,
+        Object.assign(new AddPaymentDto(), { estado: 'PENDIENTE' as const }),
+      );
+
+      expect(repo.addPayment).toHaveBeenCalledWith(
+        ID,
+        expect.objectContaining({
+          estado: 'PENDIENTE',
+          monto: null,
+          metodoPago: null,
+          motivoExento: null,
+        }),
+      );
+    });
 
     it('rejects payment on a cancelled request', async () => {
       repo.findById.mockResolvedValue(requestFixture('CANCELADA'));
@@ -530,10 +567,7 @@ describe('CertificateRequestService', () => {
     it('rejects EXENTO with amount or method', async () => {
       repo.findById.mockResolvedValue(requestFixture());
       await expect(
-        service.addPayment(
-          ID,
-          Object.assign(exemptDto(), { monto: 100 }),
-        ),
+        service.addPayment(ID, Object.assign(exemptDto(), { monto: 100 })),
       ).rejects.toBeInstanceOf(BadRequestException);
       await expect(
         service.addPayment(
@@ -628,7 +662,9 @@ describe('CertificateRequestService', () => {
         dni: '30112456',
       });
       repo.findById.mockResolvedValue(requestFixture('FIRMADA', exento));
-      repo.markAsDelivered.mockResolvedValue(requestFixture('RETIRADA', exento));
+      repo.markAsDelivered.mockResolvedValue(
+        requestFixture('RETIRADA', exento),
+      );
 
       await service.markAsDelivered(ID, deliveryDto);
 

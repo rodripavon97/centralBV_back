@@ -406,7 +406,7 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
         monto: payment.monto,
         metodo_pago: payment.metodoPago,
         motivo_exento: payment.motivoExento,
-        fecha_pago: payment.fechaPago,
+        fecha_pago: payment.estado === 'PENDIENTE' ? null : payment.fechaPago,
         actualizado_en: new Date().toISOString(),
       })
       .eq('id', id)

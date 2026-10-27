@@ -14,8 +14,8 @@ import {
   type PaymentMethod,
 } from '../domain/certificate-request.enums.js';
 
-/** Statuses used when registering a payment (PENDIENTE is not used). */
-export const ADD_PAYMENT_STATUSES = ['ABONADO', 'EXENTO'] as const;
+/** Statuses used when registering a payment (PENDIENTE clears a loaded payment). */
+export const ADD_PAYMENT_STATUSES = ['PENDIENTE', 'ABONADO', 'EXENTO'] as const;
 export type AddPaymentStatus = (typeof ADD_PAYMENT_STATUSES)[number];
 
 /** Body to register or edit a fee payment (abono). */
@@ -23,10 +23,10 @@ export class AddPaymentDto {
   @ApiProperty({
     enum: ADD_PAYMENT_STATUSES,
     example: 'ABONADO',
-    description: 'ABONADO or EXENTO',
+    description: 'PENDIENTE, ABONADO o EXENTO',
   })
   @IsIn(ADD_PAYMENT_STATUSES, {
-    message: 'El estado del abono debe ser ABONADO o EXENTO',
+    message: 'El estado del abono debe ser PENDIENTE, ABONADO o EXENTO',
   })
   estado: AddPaymentStatus;
 

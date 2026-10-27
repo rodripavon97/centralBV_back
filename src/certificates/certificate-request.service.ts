@@ -134,7 +134,8 @@ export class CertificateRequestService {
   }
 
   /**
-   * Registers or edits payment (ABONADO/EXENTO).
+   * Registers or edits payment (ABONADO/EXENTO), or resets it with PENDIENTE
+   * (clears amount, method, reason and date).
    * ABONADO requires amount and method; EXENTO requires a reason and rejects amount/method.
    * Not allowed if the request is cancelled or already delivered (RETIRADA).
    * If a payment already existed, the original payment date is kept.
