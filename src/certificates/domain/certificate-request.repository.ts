@@ -14,14 +14,21 @@ export interface CertificateRequestData {
   constancia: Certificate;
 }
 
-/** Filters and pagination for the request list (US09). */
+/** Filters and pagination for the active request list (US09). Excludes RETIRADA. */
 export interface CertificateRequestFilter {
   busqueda?: string;
+  /** Optional status among active (non-RETIRADA) statuses. */
   estado?: RequestStatus;
   orden: 'asc' | 'desc'; // by fechaAlta
   pagina: number; // starts at 1
   porPagina: number;
 }
+
+/** Filters and pagination for the completed (RETIRADA) request list. */
+export type CompletedCertificateRequestFilter = Omit<
+  CertificateRequestFilter,
+  'estado'
+>;
 
 /** Data of the person who picks up the certificate when marking as delivered. */
 export interface DeliveryData {
@@ -34,8 +41,19 @@ export interface DeliveryData {
  * Conditional updates return null when preconditions are not met.
  */
 export interface CertificateRequestRepository {
+  /**
+   * Lists active requests (never includes RETIRADA).
+   * Supports optional search, status filter, sort and pagination.
+   */
   findAll(
     filter: CertificateRequestFilter,
+  ): Promise<{ items: CertificateRequest[]; total: number }>;
+  /**
+   * Lists completed requests (only RETIRADA).
+   * Supports search, sort and pagination (no status filter).
+   */
+  findCompleted(
+    filter: CompletedCertificateRequestFilter,
   ): Promise<{ items: CertificateRequest[]; total: number }>;
   findById(id: string): Promise<CertificateRequest | null>;
 
@@ -46,12 +64,12 @@ export interface CertificateRequestRepository {
   /** Returns null if the request is no longer pending. */
   updatePending(
     id: string,
-    datos: CertificateRequestData,
+    data: CertificateRequestData,
   ): Promise<CertificateRequest | null>;
   /** Returns false if the request is not in PENDIENTE. Persists observaciones. */
   markAsRealized(
     id: string,
-    observaciones: string | null,
+    observations: string | null,
   ): Promise<boolean>;
   /** Returns false if the request is not in REALIZADA. */
   signRequest(id: string): Promise<boolean>;
@@ -61,7 +79,7 @@ export interface CertificateRequestRepository {
     data: DeliveryData,
   ): Promise<CertificateRequest | null>;
   /** Returns null if the request is no longer pending. */
-  cancelPending(id: string, motivo: string): Promise<CertificateRequest | null>;
+  cancelPending(id: string, reason: string): Promise<CertificateRequest | null>;
   /** Returns null if the request is cancelled or delivered (RETIRADA). */
   addPayment(id: string, payment: Payment): Promise<CertificateRequest | null>;
 }

@@ -4,6 +4,7 @@ import type {
   CertificateRequestRepository,
   CertificateRequestData,
   CertificateRequestFilter,
+  CompletedCertificateRequestFilter,
   DeliveryData,
 } from '../domain/certificate-request.repository.js';
 import type {
@@ -17,8 +18,8 @@ import {
   PaymentStatus,
   PaymentMethod,
 } from '../domain/certificate-request.enums.js';
-import { rangoPaginacion } from '../../common/utils/pagination.utils.js';
-import { throwMappedSupabaseError } from './supabase-error.js';
+import { paginationRange } from '../../common/utils/pagination.utils.js';
+import { throwMappedSupabaseError } from '../../supabase/supabase-error.js';
 
 /** Row from the public.solicitudes_listado view (constancias + damnificados). */
 interface CertificateRequestRow {
@@ -56,7 +57,7 @@ interface CertificateRequestRow {
 }
 
 /** Snapshot of constancia columns used to compensate a failed victim update. */
-interface ConstanciaSnapshot {
+interface CertificateSnapshot {
   damnificado_id: string;
   tipo_constancia: AccidentType;
   fecha_actuacion: string;
@@ -74,14 +75,14 @@ interface ConstanciaSnapshot {
 }
 
 /** Maps domain victim fields to the damnificados table columns. */
-const columnasDamnificado = ({ damnificado: d }: CertificateRequestData) => ({
+const victimColumns = ({ damnificado: d }: CertificateRequestData) => ({
   dni: d.dni,
   nombre: d.nombre,
   telefono: d.telefono,
 });
 
 /** Maps domain accident + certificate fields to the constancias table columns. */
-const columnasConstancia = ({
+const certificateColumns = ({
   siniestro: s,
   constancia: c,
 }: CertificateRequestData) => ({
@@ -104,12 +105,12 @@ const columnasConstancia = ({
  * Builds the PostgREST `or` filter for US09 search: by number, DNI or victim name.
  * Values are quoted so a comma or parenthesis typed by the user does not break syntax.
  */
-export function filtroBusqueda(busqueda: string): string | null {
+export function buildSearchFilter(busqueda: string): string | null {
   const q = busqueda.replace(/["\\%*]/g, '').trim();
   if (!q) return null;
-  const digitos = q.replace(/[.\s]/g, '');
-  if (/^\d+$/.test(digitos)) {
-    return `dni.ilike."%${digitos}%",numero.ilike."%${digitos}%"`;
+  const digits = q.replace(/[.\s]/g, '');
+  if (/^\d+$/.test(digits)) {
+    return `dni.ilike."%${digits}%",numero.ilike."%${digits}%"`;
   }
   return [`numero.ilike."%${q}%"`, `nombre.ilike."%${q}%"`].join(',');
 }
@@ -126,38 +127,82 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
     return this.supabase.getAdminClient();
   }
 
-  /** US09: list with optional search/status, sort by created date, and pagination. */
+  /**
+   * Lists active requests: never includes RETIRADA.
+   * Optional search/status filter, sort by created date, and pagination.
+   */
   public async findAll(filter: CertificateRequestFilter) {
-    const or = filter.busqueda ? filtroBusqueda(filter.busqueda) : null;
-    const consulta = (
-      columnas: string,
-      opciones?: { count: 'exact'; head?: boolean },
+    return this.listFromView({
+      busqueda: filter.busqueda,
+      orden: filter.orden,
+      pagina: filter.pagina,
+      porPagina: filter.porPagina,
+      estado: filter.estado,
+      completedOnly: false,
+    });
+  }
+
+  /**
+   * Lists completed requests (RETIRADA only).
+   * Optional search, sort by created date, and pagination.
+   */
+  public async findCompleted(filter: CompletedCertificateRequestFilter) {
+    return this.listFromView({
+      busqueda: filter.busqueda,
+      orden: filter.orden,
+      pagina: filter.pagina,
+      porPagina: filter.porPagina,
+      completedOnly: true,
+    });
+  }
+
+  /**
+   * Shared list query: count → range, search, order by creado_en + numero.
+   * Active list excludes RETIRADA; completed list is RETIRADA only.
+   */
+  private async listFromView(options: {
+    busqueda?: string;
+    orden: 'asc' | 'desc';
+    pagina: number;
+    porPagina: number;
+    estado?: RequestStatus;
+    completedOnly: boolean;
+  }) {
+    const or = options.busqueda ? buildSearchFilter(options.busqueda) : null;
+    const query = (
+      columns: string,
+      selectOptions?: { count: 'exact'; head?: boolean },
     ) => {
-      let q = this.db.from(this.LIST_VIEW).select(columnas, opciones);
-      if (filter.estado) q = q.eq('estado', filter.estado);
+      let q = this.db.from(this.LIST_VIEW).select(columns, selectOptions);
+      if (options.completedOnly) {
+        q = q.eq('estado', 'RETIRADA');
+      } else {
+        q = q.neq('estado', 'RETIRADA');
+        if (options.estado) q = q.eq('estado', options.estado);
+      }
       if (or) q = q.or(or);
       return q;
     };
 
     // Count first so we never request a range past the last page.
-    const { count, error: errorConteo } = await consulta('id', {
+    const { count, error: countError } = await query('id', {
       count: 'exact',
       head: true,
     });
-    if (errorConteo) throwMappedSupabaseError(errorConteo);
+    if (countError) throwMappedSupabaseError(countError);
     const total = count ?? 0;
     if (total === 0) return { items: [], total };
 
-    const { desde, hasta } = rangoPaginacion(
-      filter.pagina,
-      filter.porPagina,
+    const { from, to } = paginationRange(
+      options.pagina,
+      options.porPagina,
       total,
     );
-    const ascendente = filter.orden === 'asc';
-    const { data, error } = await consulta('*')
-      .order('creado_en', { ascending: ascendente })
-      .order('numero', { ascending: ascendente })
-      .range(desde, hasta);
+    const ascending = options.orden === 'asc';
+    const { data, error } = await query('*')
+      .order('creado_en', { ascending })
+      .order('numero', { ascending })
+      .range(from, to);
     if (error) throwMappedSupabaseError(error);
 
     return {
@@ -183,19 +228,19 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
 
   /** Creates damnificado + constancia; rolls back the victim if constancia insert fails. */
   public async create(data: CertificateRequestData, createdBy: string | null) {
-    const { data: damnificado, error: errorDamnificado } = await this.db
+    const { data: victim, error: victimError } = await this.db
       .from('damnificados')
-      .insert([columnasDamnificado(data)])
+      .insert([victimColumns(data)])
       .select('id')
       .single();
-    if (errorDamnificado) throwMappedSupabaseError(errorDamnificado);
+    if (victimError) throwMappedSupabaseError(victimError);
 
-    const { data: constancia, error } = await this.db
+    const { data: certificate, error } = await this.db
       .from('constancias')
       .insert([
         {
-          ...columnasConstancia(data),
-          damnificado_id: damnificado.id,
+          ...certificateColumns(data),
+          damnificado_id: victim.id,
           creado_por: createdBy,
         },
       ])
@@ -203,23 +248,23 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
       .single();
     if (error) {
       // No transactions in supabase-js: undo the victim insert by hand.
-      await this.db.from('damnificados').delete().eq('id', damnificado.id);
+      await this.db.from('damnificados').delete().eq('id', victim.id);
       throwMappedSupabaseError(error);
     }
 
-    const creada = await this.findById(constancia.id);
-    if (!creada) {
+    const created = await this.findById(certificate.id);
+    if (!created) {
       throwMappedSupabaseError({
         message: 'No se pudo leer la solicitud recién creada',
       });
     }
-    return creada;
+    return created;
   }
 
   /** Updates only if still PENDIENTE; compensates constancia if victim update fails. */
-  public async updatePending(id: string, datos: CertificateRequestData) {
+  public async updatePending(id: string, data: CertificateRequestData) {
     // Prior snapshot to compensate if the victim update fails.
-    const { data: prev, error: errorPrev } = await this.db
+    const { data: prev, error: prevError } = await this.db
       .from('constancias')
       .select(
         'damnificado_id, tipo_constancia, fecha_actuacion, hora_actuacion, domicilio_hecho, parte_numero, localidad, partido, motivo, perdidas, destino, razon_social, numero_poliza, patente_vehiculo',
@@ -227,29 +272,29 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
       .eq('id', id)
       .eq('estado', 'PENDIENTE')
       .maybeSingle();
-    if (errorPrev) throwMappedSupabaseError(errorPrev);
+    if (prevError) throwMappedSupabaseError(prevError);
     if (!prev) return null;
 
-    const snapshot = prev as ConstanciaSnapshot;
+    const snapshot = prev as CertificateSnapshot;
 
     // Status filter is on the same UPDATE: if someone cancelled an instant earlier, nothing changes.
-    const { data, error } = await this.db
+    const { data: rows, error } = await this.db
       .from('constancias')
       .update({
-        ...columnasConstancia(datos),
+        ...certificateColumns(data),
         actualizado_en: new Date().toISOString(),
       })
       .eq('id', id)
       .eq('estado', 'PENDIENTE')
       .select('damnificado_id');
     if (error) throwMappedSupabaseError(error);
-    if (!data?.length) return null;
+    if (!rows?.length) return null;
 
-    const { error: errorDamnificado } = await this.db
+    const { error: victimError } = await this.db
       .from('damnificados')
-      .update(columnasDamnificado(datos))
-      .eq('id', data[0].damnificado_id);
-    if (errorDamnificado) {
+      .update(victimColumns(data))
+      .eq('id', rows[0].damnificado_id);
+    if (victimError) {
       await this.db
         .from('constancias')
         .update({
@@ -269,22 +314,22 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
           actualizado_en: new Date().toISOString(),
         })
         .eq('id', id);
-      throwMappedSupabaseError(errorDamnificado);
+      throwMappedSupabaseError(victimError);
     }
 
     return this.findById(id);
   }
 
   /** Cancels only if still PENDIENTE; returns null otherwise. */
-  public async cancelPending(id: string, motivo: string) {
-    const ahora = new Date().toISOString();
+  public async cancelPending(id: string, reason: string) {
+    const now = new Date().toISOString();
     const { data, error } = await this.db
       .from('constancias')
       .update({
         estado: 'CANCELADA',
-        motivo_cancelacion: motivo,
-        cancelado_en: ahora,
-        actualizado_en: ahora,
+        motivo_cancelacion: reason,
+        cancelado_en: now,
+        actualizado_en: now,
       })
       .eq('id', id)
       .eq('estado', 'PENDIENTE')
@@ -296,14 +341,14 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
   }
 
   /** Marks as REALIZADA only if still PENDIENTE (PENDIENTE → REALIZADA). */
-  public async markAsRealized(id: string, observaciones: string | null) {
-    const ahora = new Date().toISOString();
+  public async markAsRealized(id: string, observations: string | null) {
+    const now = new Date().toISOString();
     const { data, error } = await this.db
       .from('constancias')
       .update({
         estado: 'REALIZADA',
-        observaciones,
-        actualizado_en: ahora,
+        observaciones: observations,
+        actualizado_en: now,
       })
       .eq('id', id)
       .eq('estado', 'PENDIENTE')
@@ -315,13 +360,13 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
 
   /** Signs only if the request is REALIZADA (REALIZADA → FIRMADA). */
   public async signRequest(id: string) {
-    const ahora = new Date().toISOString();
+    const now = new Date().toISOString();
     const { data, error } = await this.db
       .from('constancias')
       .update({
         estado: 'FIRMADA',
-        firmado_en: ahora,
-        actualizado_en: ahora,
+        firmado_en: now,
+        actualizado_en: now,
       })
       .eq('id', id)
       .eq('estado', 'REALIZADA')
@@ -333,13 +378,13 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
 
   /** Delivers only if FIRMADA and fee is ABONADO or EXENTO (RN/02). */
   public async markAsDelivered(id: string, data: DeliveryData) {
-    const ahora = new Date().toISOString();
+    const now = new Date().toISOString();
     const { data: rows, error } = await this.db
       .from('constancias')
       .update({
         estado: 'RETIRADA',
-        actualizado_en: ahora,
-        retirado_en: ahora,
+        actualizado_en: now,
+        retirado_en: now,
         retirado_por_nombre: data.nombreCompleto,
         retirado_por_dni: data.dni,
       })

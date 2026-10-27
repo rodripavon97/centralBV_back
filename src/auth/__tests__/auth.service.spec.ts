@@ -2,10 +2,10 @@ import 'reflect-metadata';
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
-import { User } from '../users/domain/user.entity.js';
-import { USER_REPOSITORY } from '../users/domain/user.repository.js';
-import { SupabaseService } from '../supabase/supabase.service.js';
-import { AuthService } from './auth.service.js';
+import { User } from '../../users/domain/user.entity.js';
+import { USER_REPOSITORY } from '../../users/domain/user.repository.js';
+import { SupabaseService } from '../../supabase/supabase.service.js';
+import { AuthService } from '../auth.service.js';
 
 describe('AuthService', () => {
   const jwtSecret = 'test-secret';

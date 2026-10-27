@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { LoginDto } from './login.dto.js';
+import { LoginDto } from '../dtos/login.dto.js';
 
 describe('LoginDto', () => {
   const validateDto = async (data: Record<string, unknown>) => {

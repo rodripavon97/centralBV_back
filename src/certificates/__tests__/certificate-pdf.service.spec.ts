@@ -10,7 +10,7 @@ import type { RequestStatus } from '../domain/certificate-request.enums.js';
 
 const ID = '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b';
 
-const solicitud = (
+const request = (
   estado: RequestStatus = 'REALIZADA',
 ): CertificateRequest => ({
   id: ID,
@@ -63,7 +63,7 @@ describe('CertificatePdfService', () => {
     service = module.get(CertificatePdfService);
   });
 
-  it('devuelve 404 si la solicitud no existe', async () => {
+  it('returns 404 if the request does not exist', async () => {
     repo.findById.mockResolvedValue(null);
     await expect(service.generatePdf(ID)).rejects.toBeInstanceOf(
       NotFoundException,
@@ -71,9 +71,9 @@ describe('CertificatePdfService', () => {
   });
 
   it.each(['PENDIENTE', 'CANCELADA'] as const)(
-    'devuelve 409 si el estado es %s',
+    'returns 409 if status is %s',
     async (estado) => {
-      repo.findById.mockResolvedValue(solicitud(estado));
+      repo.findById.mockResolvedValue(request(estado));
       await expect(service.generatePdf(ID)).rejects.toBeInstanceOf(
         ConflictException,
       );
@@ -81,9 +81,9 @@ describe('CertificatePdfService', () => {
   );
 
   it.each(['REALIZADA', 'FIRMADA', 'RETIRADA'] as const)(
-    'genera un PDF válido cuando el estado es %s',
+    'generates a valid PDF when status is %s',
     async (estado) => {
-      repo.findById.mockResolvedValue(solicitud(estado));
+      repo.findById.mockResolvedValue(request(estado));
       const { buffer, filename } = await service.generatePdf(ID);
       expect(buffer.subarray(0, 4).toString('utf8')).toBe('%PDF');
       expect(filename).toContain('Constancia_');
@@ -91,8 +91,8 @@ describe('CertificatePdfService', () => {
     },
   );
 
-  it('acepta observaciones como parámetro', async () => {
-    repo.findById.mockResolvedValue(solicitud('REALIZADA'));
+  it('accepts observations as a parameter', async () => {
+    repo.findById.mockResolvedValue(request('REALIZADA'));
     const { buffer } = await service.generatePdf(ID, 'Texto bajo OBSERVACIONES');
     expect(buffer.subarray(0, 4).toString('utf8')).toBe('%PDF');
   });

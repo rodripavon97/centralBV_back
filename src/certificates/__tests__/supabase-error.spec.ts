@@ -3,10 +3,10 @@ import {
   ConflictException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { throwMappedSupabaseError } from '../repositories/supabase-error.js';
+import { throwMappedSupabaseError } from '../../supabase/supabase-error.js';
 
 describe('throwMappedSupabaseError', () => {
-  it('mapea violaciones de CHECK a BadRequestException', () => {
+  it('maps CHECK violations to BadRequestException', () => {
     expect(() =>
       throwMappedSupabaseError({
         code: '23514',
@@ -15,13 +15,13 @@ describe('throwMappedSupabaseError', () => {
     ).toThrow(BadRequestException);
   });
 
-  it('mapea unique/FK a ConflictException', () => {
+  it('maps unique/FK errors to ConflictException', () => {
     expect(() =>
       throwMappedSupabaseError({ code: '23505', message: 'duplicate key' }),
     ).toThrow(ConflictException);
   });
 
-  it('mapea el resto a InternalServerErrorException', () => {
+  it('maps everything else to InternalServerErrorException', () => {
     expect(() =>
       throwMappedSupabaseError({ message: 'connection reset' }),
     ).toThrow(InternalServerErrorException);

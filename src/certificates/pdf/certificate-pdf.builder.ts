@@ -99,7 +99,7 @@ export function buildCertificatePdf(data: CertificatePdfViewModel): Buffer {
     doc.setFont('helvetica', 'bold');
     doc.text('SOLICITANTE: ', col1, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(data.solicitante.toUpperCase(), col1 + 30, y);
+    doc.text(data.applicant.toUpperCase(), col1 + 30, y);
 
     doc.setFont('helvetica', 'bold');
     doc.text('DNI: ', col2, y);
@@ -110,77 +110,77 @@ export function buildCertificatePdf(data: CertificatePdfViewModel): Buffer {
     doc.setFont('helvetica', 'bold');
     doc.text('DOMICILIO DEL HECHO: ', col1, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(data.domicilio.toUpperCase(), col1 + 45, y);
+    doc.text(data.address.toUpperCase(), col1 + 45, y);
 
     y += 10;
     doc.setFont('helvetica', 'bold');
     doc.text('LOCALIDAD: ', col1, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(data.localidad.toUpperCase(), col1 + 25, y);
+    doc.text(data.locality.toUpperCase(), col1 + 25, y);
 
     doc.setFont('helvetica', 'bold');
     doc.text('PARTIDO: ', col2, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(data.partido.toUpperCase(), col2 + 18, y);
+    doc.text(data.district.toUpperCase(), col2 + 18, y);
 
     y += 10;
     doc.setFont('helvetica', 'bold');
     doc.text('MOTIVO: ', col1, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(data.motivo.toUpperCase(), col1 + 18, y);
+    doc.text(data.reason.toUpperCase(), col1 + 18, y);
 
-    if (data.dominio) {
+    if (data.vehiclePlate) {
       doc.setFont('helvetica', 'bold');
       doc.text('DOMINIO: ', col2, y);
       doc.setFont('helvetica', 'normal');
-      doc.text(data.dominio.toUpperCase(), col2 + 18, y);
+      doc.text(data.vehiclePlate.toUpperCase(), col2 + 18, y);
     }
 
     y += 10;
     doc.setFont('helvetica', 'bold');
     doc.text('PERDIDAS: ', col1, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(data.perdidas, col1 + 22, y);
+    doc.text(data.losses, col1 + 22, y);
 
     y += 10;
     doc.setFont('helvetica', 'bold');
     doc.text('PARA SER PRESENTADO: ', col1, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(data.presentado.toUpperCase(), col1 + 45, y);
+    doc.text(data.presentedTo.toUpperCase(), col1 + 45, y);
 
-    if (data.poliza) {
+    if (data.policyNumber) {
       y += 10;
       doc.setFont('helvetica', 'bold');
       doc.text('NÚMERO DE POLIZA: ', col1, y);
       doc.setFont('helvetica', 'normal');
-      doc.text(data.poliza, col1 + 40, y);
+      doc.text(data.policyNumber, col1 + 40, y);
     }
 
     y += 10;
     doc.setFont('helvetica', 'bold');
     doc.text('PARTE N°: ', col1, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(data.parte, col1 + 20, y);
+    doc.text(data.reportNumber, col1 + 20, y);
 
     y += 10;
     doc.setFont('helvetica', 'bold');
     doc.text('FECHA: ', col1, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(data.fechaDisplay, col1 + 15, y);
+    doc.text(data.dateDisplay, col1 + 15, y);
 
     y += 10;
     doc.setFont('helvetica', 'bold');
     doc.text('HORA: ', col1, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(`${data.hora} HS.`, col1 + 15, y);
+    doc.text(`${data.time} HS.`, col1 + 15, y);
 
-    if (data.observaciones) {
+    if (data.observations) {
       y += 10;
       doc.setFont('helvetica', 'bold');
       doc.text('OBSERVACIONES: ', col1, y);
       doc.setFont('helvetica', 'normal');
       const obsLines = doc.splitTextToSize(
-        data.observaciones,
+        data.observations,
         width - 40 - 35,
       ) as string[];
       doc.text(obsLines, col1 + 35, y);

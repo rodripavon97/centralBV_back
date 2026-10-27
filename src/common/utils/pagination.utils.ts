@@ -1,4 +1,4 @@
-export type RespuestaPaginada<T> = {
+export type Paginated<T> = {
   items: T[];
   total: number;
   pagina: number;
@@ -6,45 +6,41 @@ export type RespuestaPaginada<T> = {
   porPagina: number;
 };
 
-/** Total de páginas; al menos 1 aunque total sea 0. */
-export function calcularPaginas(total: number, porPagina: number): number {
-  return Math.max(1, Math.ceil(total / porPagina));
+/** Calculates the total number of pages; at least 1 even if total is 0. */
+export function totalPages(total: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(total / pageSize));
 }
 
-/** Rango inclusivo para PostgREST `.range(desde, hasta)`, con página clampada. */
-export function rangoPaginacion(
-  pagina: number,
-  porPagina: number,
+/** Inclusive range for PostgREST `.range(from, to)`, with page clamped. */
+export function paginationRange(
+  page: number,
+  pageSize: number,
   total: number,
-): { desde: number; hasta: number; pagina: number; paginas: number } {
-  const paginas = calcularPaginas(total, porPagina);
-  const paginaClamped = Math.min(Math.max(1, pagina), paginas);
-  const desde = (paginaClamped - 1) * porPagina;
+): { from: number; to: number; page: number; pages: number } {
+  const pages = totalPages(total, pageSize);
+  const pageClamped = Math.min(Math.max(1, page), pages);
+  const from = (pageClamped - 1) * pageSize;
   return {
-    desde,
-    hasta: desde + porPagina - 1,
-    pagina: paginaClamped,
-    paginas,
+    from,
+    to: from + pageSize - 1,
+    page: pageClamped,
+    pages,
   };
 }
 
-/** Arma la respuesta de listado a partir de items + total. */
-export function armarRespuestaPaginada<T>(
+/** Builds the paginated response from items + total. */
+export function buildPaginatedResponse<T>(
   items: T[],
   total: number,
-  pagina: number,
-  porPagina: number,
-): RespuestaPaginada<T> {
-  const { pagina: paginaClamped, paginas } = rangoPaginacion(
-    pagina,
-    porPagina,
-    total,
-  );
+  page: number,
+  pageSize: number,
+): Paginated<T> {
+  const { page: pageClamped, pages } = paginationRange(page, pageSize, total);
   return {
     items,
     total,
-    pagina: paginaClamped,
-    paginas,
-    porPagina,
+    pagina: pageClamped,
+    paginas: pages,
+    porPagina: pageSize,
   };
 }

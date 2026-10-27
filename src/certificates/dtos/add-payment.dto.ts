@@ -23,7 +23,7 @@ export class AddPaymentDto {
   @ApiProperty({
     enum: ADD_PAYMENT_STATUSES,
     example: 'ABONADO',
-    description: 'ABONADO o EXENTO',
+    description: 'ABONADO or EXENTO',
   })
   @IsIn(ADD_PAYMENT_STATUSES, {
     message: 'El estado del abono debe ser ABONADO o EXENTO',
@@ -32,7 +32,7 @@ export class AddPaymentDto {
 
   @ApiPropertyOptional({
     example: 1500,
-    description: 'Obligatorio si es ABONADO; no enviar si es EXENTO',
+    description: 'Required for ABONADO; omit for EXENTO',
   })
   @ValidateIf((o: AddPaymentDto) => o.estado === 'ABONADO')
   @Type(() => Number)
@@ -46,7 +46,7 @@ export class AddPaymentDto {
   @ApiPropertyOptional({
     enum: PAYMENT_METHODS,
     example: 'EFECTIVO',
-    description: 'Obligatorio si es ABONADO; no enviar si es EXENTO',
+    description: 'Required for ABONADO; omit for EXENTO',
   })
   @ValidateIf((o: AddPaymentDto) => o.estado === 'ABONADO')
   @IsIn(PAYMENT_METHODS, { message: 'El método de pago no es válido' })
@@ -54,7 +54,7 @@ export class AddPaymentDto {
 
   @ApiPropertyOptional({
     example: 'Beneficiario de acción social',
-    description: 'Obligatorio si el estado es EXENTO',
+    description: 'Required when status is EXENTO',
   })
   @ValidateIf((o: AddPaymentDto) => o.estado === 'EXENTO')
   @Transform(({ value }: { value: unknown }) =>
