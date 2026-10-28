@@ -76,9 +76,7 @@ describe('SupabaseUserRepository', () => {
       expect.objectContaining({ id: 'u1', email: row.email }),
     );
 
-    from.mockReturnValue(
-      mockTerminal({ data: null, error: { message: 'PGRST116' } }),
-    );
+    from.mockReturnValue(mockTerminal({ data: null, error: null }));
     await expect(repo.findByEmail('missing@x.com')).resolves.toBeNull();
   });
 
