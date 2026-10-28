@@ -3,8 +3,10 @@ import { UsersController } from './users.controller.js';
 import { UsersService } from './users.service.js';
 import { SupabaseUserRepository } from './repositories/supabase-user.repository.js';
 import { USER_REPOSITORY } from './domain/user.repository.js';
+import { MailModule } from '../mail/mail.module.js';
 
 @Module({
+  imports: [MailModule],
   controllers: [UsersController],
   providers: [
     UsersService,

@@ -59,6 +59,9 @@ export class SupabaseUserRepository implements UserRepository {
     // Función interna para reutilizar la lógica de filtros (igual que el `query` en constancias)
     const buildQuery = (columns: string, selectOptions?: { count: 'exact'; head?: boolean }) => {
       let q = this.db.from('usuarios').select(columns, selectOptions);
+      
+      // Excluir al usuario admin
+      q = q.neq('email', 'admin@centralbv.com'); 
 
       if (busqueda) {
         q = q.or(`nombre.ilike.%${busqueda}%,apellido.ilike.%${busqueda}%,email.ilike.%${busqueda}%`);

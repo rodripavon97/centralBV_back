@@ -1,16 +1,12 @@
-import {
-  Controller,
-  UseGuards,
-  Get,
-  Patch,
-  Param,
-  ParseUUIDPipe,
-} from '@nestjs/common';
+import { Controller, UseGuards, Post, Body, Get, Query, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../common/guards/roles.guard.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
 import { UsersService } from './users.service.js';
+import { CreateUserDto } from './dtos/create-user.dto.js';
+import { ListUsersDto } from './dtos/list-user.dto.js';
+
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -19,26 +15,24 @@ import { UsersService } from './users.service.js';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Get('pending')
+  @Post()
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Ver usuarios pendientes de aprobación (Solo Admin)' })
-  async getPending() {
-    return this.usersService.getPendingUsers();
+  @ApiOperation({ summary: 'Crear un nuevo usuario (Solo Admin)' })
+  async create(@Body() dto: CreateUserDto) {
+    return this.usersService.createUser(dto);
   }
 
-  @Patch(':id/approve')
-  @Roles('ADMIN')
-  @ApiOperation({ summary: 'Aprobar la creación de un usuario (Solo Admin)' })
-  async approve(@Param('id', ParseUUIDPipe) id: string) {
-    return this.usersService.approveUser(id);
-  }
-
-  // We're including this endpoint in case you need to list users in a table in the future
   @Get()
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Listar todos los usuarios (Solo Admin)' })
-  async findAll() {
-    // This endpoint is currently not implemented, but it's here for future use if you need to list users in a table.
-    return []; 
+  @ApiOperation({ summary: 'Listar usuarios con búsqueda, filtros y paginación (Solo Admin)' })
+  async findAll(@Query() query: ListUsersDto) {
+    return this.usersService.findAll(query);
+  }
+
+  @Get(':id')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Buscar un usuario por su ID (Solo Admin)' })
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.findOne(id);
   }
 }
