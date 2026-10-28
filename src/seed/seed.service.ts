@@ -58,13 +58,16 @@ export class SeedService implements OnApplicationBootstrap {
     await this.seedRoles();
 
     // Create users with different roles. If they already exist, they will be skipped.
-    await this.seedUser('admin@centralbv.com', 'Admin123!', 'Super', 'Admin', 'ADMIN');
+    // Fíjate que ahora pasamos un array de roles: ['ADMIN']
+    await this.seedUser('admin@centralbv.com', 'Admin123!', 'Super', 'Admin', ['ADMIN']);
+    
+    // Aquí le asignamos los dos roles para cumplir con la matriz de permisos
     await this.seedUser(
       'administrativo@centralbv.com',
       'Admin123!',
       'Usuario',
       'Administrativo',
-      'ADMINISTRATIVO',
+      ['ADMINISTRATIVO', 'COMUN'], 
     );
 
     await this.seedCertificateRequests();
@@ -91,7 +94,7 @@ export class SeedService implements OnApplicationBootstrap {
       'Volkswagen',
       'Renault',
     ]);
-    const modelIds = await this.seedVehicleModels([
+    const modelIds = await this.seedVehicleModels([ 
       { valor: 'Tector', marca: 'Iveco' },
       { valor: 'Atego 1726', marca: 'Mercedes-Benz' },
       { valor: 'F-350', marca: 'Ford' },
@@ -300,7 +303,8 @@ export class SeedService implements OnApplicationBootstrap {
     const roles = [
       { nombre: 'COMUN', descripcion: 'Ver móviles - Marcar Operativo/Fuera de servicio' },
       { nombre: 'AUTOMOTORES', descripcion: 'Alta, baja y modificación de móviles.' },
-      { nombre: 'ADMINISTRATIVO', descripcion: '  dulo de constancias.' },
+      // Corregí el texto corrupto de esta descripción
+      { nombre: 'ADMINISTRATIVO', descripcion: 'Todas las capacidades de COMUN + acceso al módulo de constancias.' },
       { nombre: 'ADMIN', descripcion: 'Gestión de usuarios y roles.' },
     ];
 
@@ -314,7 +318,13 @@ export class SeedService implements OnApplicationBootstrap {
   }
 
   // A Generic, Fail-Safe Method for Creating Any Initial User
-  private async seedUser(email: string, pass: string, nombre: string, apellido: string, roleName: string) {
+  private async seedUser(
+    email: string,
+    pass: string,
+    nombre: string,
+    apellido: string,
+    roleNames: string[], // <-- Ahora recibe un array de roles
+  ) {
     let userId: string | null = null;
 
     try {
@@ -355,16 +365,20 @@ export class SeedService implements OnApplicationBootstrap {
         }]);
       }
 
-      // 4. Assign Role (Always runs)
-      const { data: roleData } = await this.db.from('roles').select('id').eq('nombre', roleName).single();
-      if (roleData && userId) {
-        await this.db.from('usuario_rol').upsert(
-          [{ usuario_id: userId, rol_id: roleData.id }],
-          { onConflict: 'usuario_id,rol_id' }
-        );
+      // 4. Assign ALL roles from the array
+      for (const roleName of roleNames) {
+        const { data: roleData } = await this.db.from('roles').select('id').eq('nombre', roleName).single();
+        if (roleData && userId) {
+          await this.db.from('usuario_rol').upsert(
+            [{ usuario_id: userId, rol_id: roleData.id }],
+            { onConflict: 'usuario_id,rol_id' }
+          );
+        } else {
+          this.logger.warn(`⚠️ No se encontró el rol "${roleName}" para asignar a ${email}`);
+        }
       }
 
-      this.logger.log(`✅ Usuario asegurado: ${email} con rol ${roleName}`);
+      this.logger.log(`✅ Usuario asegurado: ${email} con roles: [${roleNames.join(', ')}]`);
     } catch (error) {
       this.logger.error(`❌ Error asegurando usuario ${email}: ` + (error instanceof Error ? error.message : String(error)));
     }

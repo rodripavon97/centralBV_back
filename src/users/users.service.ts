@@ -1,15 +1,13 @@
-import {
-  Injectable,
-  Inject,
-  NotFoundException,
-  InternalServerErrorException,
-  ConflictException,
-  Logger,
-} from '@nestjs/common';
-import { USER_REPOSITORY} from './domain/user.repository.js';
+import { Injectable, Inject, NotFoundException, ConflictException, InternalServerErrorException, Logger } from '@nestjs/common';
+import { USER_REPOSITORY } from './domain/user.repository.js';
 import type { UserRepository } from './domain/user.repository.js';
-import { SupabaseService } from '../supabase/supabase.service.js';
+import { User } from './domain/user.entity.js';
 import { CreateUserDto } from './dtos/create-user.dto.js';
+
+import { SupabaseService } from '../supabase/supabase.service.js';
+import { throwMappedSupabaseError } from '../supabase/supabase-error.js';
+import { buildPaginatedResponse, Paginated } from '../common/utils/pagination.utils.js';
+import { ListUsersDto } from './dtos/list-user.dto.js';
 
 @Injectable()
 export class UsersService {
@@ -20,54 +18,92 @@ export class UsersService {
     private readonly supabase: SupabaseService,
   ) {}
 
+  async findAll(query: ListUsersDto): Promise<Paginated<User>> {
+    const { busqueda, rol, activo, orden, pagina, porPagina } = query;
+    
+    // Traducimos el DTO de HTTP a la interfaz de Dominio
+    const { items, total } = await this.userRepo.findAll({
+      busqueda: busqueda?.trim() || undefined,
+      rol: rol?.trim() || undefined,
+      activo,
+      orden,
+      pagina: Number(pagina) || 1,
+      porPagina: Number(porPagina) || 10,
+    });
+
+    return buildPaginatedResponse(items, total, pagina, porPagina);
+  }
+
+  async findOne(id: string): Promise<User> {
+    const user = await this.userRepo.findById(id);
+    if (!user) {
+      throw new NotFoundException(`El usuario con ID ${id} no fue encontrado`);
+    }
+    return user;
+  }
+
   async createUser(dto: CreateUserDto) {
     const db = this.supabase.getAdminClient();
 
-    // Check if the email address already exists (Acceptance criterion)
+    // 1. Verificar si existe
     const existingUser = await this.userRepo.findByEmail(dto.email);
     if (existingUser) {
       throw new ConflictException('El correo electrónico ya está registrado en el sistema');
     }
 
     try {
-      // Create the user in Supabase Auth
+      // 2. Crear en Supabase Auth
       const { data: authData, error: authError } = await db.auth.admin.createUser({
         email: dto.email,
         password: dto.password,
         email_confirm: true,
       });
 
-      if (authError) {
-        throw new InternalServerErrorException('Error al crear credenciales: ' + authError.message);
-      }
-
+      if (authError) throwMappedSupabaseError(authError);
       const userId = authData.user.id;
 
-      // 3. Insert the user into the public.usuarios table
+      // 3. Insertar en public.usuarios
       await this.userRepo.create({
         id: userId,
         email: dto.email,
         nombre: dto.nombre,
         apellido: dto.apellido,
-        activo: true, // Ahora el admin lo crea activo directamente
+        activo: true,
       });
 
-      // 4. Search for the role ID based on the provided role name
-      const { data: roleData, error: roleError } = await db
+      // 4. Asignar Roles (Lógica de Matriz de Permisos)
+      const roleToAssign = dto.roleName.toUpperCase();
+      const rolesIdsToAssign: { usuario_id: string; rol_id: string }[] = [];
+
+      // Rol principal
+      const { data: mainRole, error: roleError } = await db
         .from('roles')
         .select('id')
-        .eq('nombre', dto.roleName.toUpperCase())
+        .eq('nombre', roleToAssign)
         .single();
 
-      if (roleError || !roleData) {
-        throw new NotFoundException(`El rol '${dto.roleName}' no existe en el sistema`);
+      if (roleError || !mainRole) {
+        throw new NotFoundException(`El rol '${roleToAssign}' no existe en el sistema`);
+      }
+      rolesIdsToAssign.push({ usuario_id: userId, rol_id: mainRole.id });
+
+      // Herencia explícita: Si es ADMINISTRATIVO, también lleva COMUN
+      if (roleToAssign === 'ADMINISTRATIVO') {
+        const { data: comunRole } = await db
+          .from('roles')
+          .select('id')
+          .eq('nombre', 'COMUN')
+          .single();
+          
+        if (comunRole) {
+          rolesIdsToAssign.push({ usuario_id: userId, rol_id: comunRole.id });
+        }
       }
 
-      // 5. Assign the role to the user in the usuario_rol table
-      await db.from('usuario_rol').insert([{ usuario_id: userId, rol_id: roleData.id }]);
+      // 5. Insertar roles
+      const { error: assignError } = await db.from('usuario_rol').insert(rolesIdsToAssign);
+      if (assignError) throwMappedSupabaseError(assignError);
 
-      // 6. WELCOME EMAIL SIMULATION (See note below)
-      // In production, you would call a MailService or the Supabase endpoint here
       this.logger.log(`[EMAIL] Enviando correo de bienvenida a ${dto.email} con contraseña temporal.`);
 
       return {
@@ -78,36 +114,8 @@ export class UsersService {
       if (error instanceof ConflictException || error instanceof NotFoundException) {
         throw error;
       }
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Error creando usuario: ${errorMessage}`);
+      this.logger.error(`Error creando usuario: ${error instanceof Error ? error.message : String(error)}`);
       throw new InternalServerErrorException('Error interno al crear el usuario');
     }
-  }
-
-  async getPendingUsers() {
-    const { data, error } = await this.supabase
-      .getAdminClient()
-      .from('usuarios')
-      .select('*')
-      .eq('activo', false);
-
-    if (error) throw new InternalServerErrorException(error.message);
-    return data;
-  }
-
-  async approveUser(id: string) {
-    const user = await this.userRepo.findById(id);
-    if (!user) throw new NotFoundException('Usuario no encontrado');
-
-    const { data, error } = await this.supabase
-      .getAdminClient()
-      .from('usuarios')
-      .update({ activo: true })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw new InternalServerErrorException(error.message);
-    return { message: 'Usuario aprobado exitosamente', user: data };
   }
 }
