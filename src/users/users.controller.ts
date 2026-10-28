@@ -1,11 +1,12 @@
 import { Controller, UseGuards, Post, Body, Get, Query, Param, ParseUUIDPipe } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../common/guards/roles.guard.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
 import { UsersService } from './users.service.js';
 import { CreateUserDto } from './dtos/create-user.dto.js';
 import { ListUsersDto } from './dtos/list-user.dto.js';
+import { UserResponseDto } from './dtos/user-response.dto.js';
 
 
 @ApiTags('Users')
@@ -39,6 +40,17 @@ export class UsersController {
   @Get(':id')
   @Roles('ADMIN')
   @ApiOperation({ summary: 'Buscar un usuario por su ID (Solo Admin)' })
+  @ApiParam({
+    name: 'id',
+    description: 'UUID del usuario',
+    example: '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b',
+  })
+  @ApiResponse({
+    status: 200,
+    type: UserResponseDto,
+    description: 'Usuario encontrado',
+  })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.findOne(id);
   }

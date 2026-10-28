@@ -53,8 +53,15 @@ export class SupabaseUserRepository implements UserRepository {
     return this.listFromTable(params);
   }
 
-    private async listFromTable(params: FindAllUsersParams): Promise<{ items: User[]; total: number }> {
+  private async listFromTable(params: FindAllUsersParams): Promise<{ items: User[]; total: number }> {
     const { busqueda, rol, activo, orden, pagina, porPagina } = params;
+
+    // Sin filtro de rol usamos LEFT JOIN para que también aparezcan los
+    // usuarios sin roles (el admin necesita verlos para asignarles uno).
+    // Al filtrar por rol necesitamos INNER para descartar a los que no lo tienen.
+    const rolesRelation = rol
+      ? 'usuario_rol!inner ( roles!inner ( nombre ) )'
+      : 'usuario_rol ( roles ( nombre ) )';
 
     // Función interna para reutilizar la lógica de filtros (igual que el `query` en constancias)
     const buildQuery = (columns: string, selectOptions?: { count: 'exact'; head?: boolean }) => {
@@ -77,7 +84,7 @@ export class SupabaseUserRepository implements UserRepository {
     };
 
     // 3. Primero contamos (para no pedir rangos fuera de la última página)
-    const { count, error: countError } = await buildQuery('id, usuario_rol!inner ( roles!inner ( nombre ) )', {
+    const { count, error: countError } = await buildQuery(`id, ${rolesRelation}`, {
       count: 'exact',
       head: true,
     });
@@ -90,7 +97,7 @@ export class SupabaseUserRepository implements UserRepository {
     const { from, to } = paginationRange(pagina, porPagina, total);
 
     // 5. Consultamos los datos reales con paginación y orden
-    let dataQuery = buildQuery('*, usuario_rol!inner ( roles!inner ( nombre ) )');
+    let dataQuery = buildQuery(`*, ${rolesRelation}`);
     
     if (orden) {
       const [columna, direccion] = orden.split('.');
