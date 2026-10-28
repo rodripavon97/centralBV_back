@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import {
+  BadRequestException,
   ConflictException,
   InternalServerErrorException,
   NotFoundException,
@@ -11,6 +12,7 @@ import { SupabaseService } from '../../supabase/supabase.service.js';
 import { MailService } from '../../mail/mail.service.js';
 import { UsersService } from '../users.service.js';
 import { CreateUserDto } from '../dtos/create-user.dto.js';
+import { EncryptionService } from '../../common/security/encryption.service.js';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -19,8 +21,11 @@ describe('UsersService', () => {
   let findAll: ReturnType<typeof vi.fn>;
   let create: ReturnType<typeof vi.fn>;
   let createUser: ReturnType<typeof vi.fn>;
+  let updateUserById: ReturnType<typeof vi.fn>;
   let from: ReturnType<typeof vi.fn>;
   let sendWelcomeEmail: ReturnType<typeof vi.fn>;
+  let encrypt: ReturnType<typeof vi.fn>;
+  let decrypt: ReturnType<typeof vi.fn>;
 
   const dto = Object.assign(new CreateUserDto(), {
     nombre: 'Juan',
@@ -54,8 +59,11 @@ describe('UsersService', () => {
     findAll = vi.fn();
     create = vi.fn().mockResolvedValue(undefined);
     createUser = vi.fn();
+    updateUserById = vi.fn().mockResolvedValue({ data: null, error: null });
     from = vi.fn();
     sendWelcomeEmail = vi.fn().mockResolvedValue(undefined);
+    encrypt = vi.fn().mockImplementation((value: string) => `v1.enc(${value})`);
+    decrypt = vi.fn();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -68,7 +76,7 @@ describe('UsersService', () => {
           provide: SupabaseService,
           useValue: {
             getAdminClient: () => ({
-              auth: { admin: { createUser } },
+              auth: { admin: { createUser, updateUserById } },
               from,
             }),
           },
@@ -76,6 +84,10 @@ describe('UsersService', () => {
         {
           provide: MailService,
           useValue: { sendWelcomeEmail },
+        },
+        {
+          provide: EncryptionService,
+          useValue: { encrypt, decrypt },
         },
       ],
     }).compile();
@@ -158,6 +170,13 @@ describe('UsersService', () => {
     it('envía el correo exactamente una vez', async () => {
       await service.createUser(dto);
       expect(sendWelcomeEmail).toHaveBeenCalledTimes(1);
+    });
+
+    it('guarda la contraseña cifrada para poder reenviarla luego', async () => {
+      await service.createUser(dto);
+
+      expect(encrypt).toHaveBeenCalledWith(dto.password);
+      expect(from).toHaveBeenCalledWith('usuarios');
     });
   });
 
@@ -255,6 +274,82 @@ describe('UsersService', () => {
     it('lanza NotFoundException si el usuario no existe', async () => {
       findById.mockResolvedValue(null);
       await expect(service.findOne('missing')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ─── REENVÍO DE BIENVENIDA ────────────────────────────────────
+
+  describe('resendWelcomeEmail', () => {
+    const user = new User(
+      '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b',
+      'ana@centralbv.com',
+      'Ana',
+      'Lopez',
+      true,
+    );
+    const encryptedPassword = 'v1.iv.tag.data';
+    const originalPassword = 'Temporal123!';
+
+    beforeEach(() => {
+      findById.mockResolvedValue(user);
+      from.mockImplementation((table: string) => {
+        if (table === 'usuarios') {
+          return mockChain({
+            data: { password_cifrada: encryptedPassword },
+            error: null,
+          });
+        }
+        return mockChain({ data: null, error: null });
+      });
+      decrypt.mockReturnValue(originalPassword);
+    });
+
+    it('lanza NotFoundException si el usuario no existe', async () => {
+      findById.mockResolvedValue(null);
+
+      await expect(service.resendWelcomeEmail(user.id)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(sendWelcomeEmail).not.toHaveBeenCalled();
+    });
+
+    it('reenvía la misma contraseña que el admin ingresó al registrar', async () => {
+      const result = await service.resendWelcomeEmail(user.id);
+
+      expect(decrypt).toHaveBeenCalledWith(encryptedPassword);
+      expect(sendWelcomeEmail).toHaveBeenCalledWith(
+        user.email,
+        user.nombre,
+        originalPassword,
+      );
+      expect(updateUserById).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        message: 'Correo de bienvenida reenviado exitosamente.',
+      });
+    });
+
+    it('lanza BadRequestException si no hay contraseña guardada (usuario viejo)', async () => {
+      from.mockImplementation(() =>
+        mockChain({ data: { password_cifrada: null }, error: null }),
+      );
+
+      await expect(service.resendWelcomeEmail(user.id)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(updateUserById).not.toHaveBeenCalled();
+      expect(sendWelcomeEmail).not.toHaveBeenCalled();
+    });
+
+    it('lanza BadRequestException si el descifrado falla, sin generar una nueva', async () => {
+      decrypt.mockImplementation(() => {
+        throw new Error('bad payload');
+      });
+
+      await expect(service.resendWelcomeEmail(user.id)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(updateUserById).not.toHaveBeenCalled();
+      expect(sendWelcomeEmail).not.toHaveBeenCalled();
     });
   });
 

@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, ConflictException, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, ConflictException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { USER_REPOSITORY } from './domain/user.repository.js';
 import type { UserRepository } from './domain/user.repository.js';
 import { CreateUserDto } from './dtos/create-user.dto.js';
@@ -7,6 +7,7 @@ import { throwMappedSupabaseError } from '../supabase/supabase-error.js';
 import { MailService } from '../mail/mail.service.js';
 import { User } from './domain/user.entity.js';
 import { buildPaginatedResponse, Paginated } from '../common/utils/pagination.utils.js';
+import { EncryptionService } from '../common/security/encryption.service.js';
 import { ListUsersDto } from './dtos/list-user.dto.js';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class UsersService {
     @Inject(USER_REPOSITORY) private readonly userRepo: UserRepository,
     private readonly supabase: SupabaseService,
     private readonly mailService: MailService,
+    private readonly encryption: EncryptionService,
   ) {}
 
   async findAll(query: ListUsersDto): Promise<Paginated<User>> {
@@ -68,6 +70,10 @@ export class UsersService {
         activo: true,
       });
 
+      // Guardamos la contraseña cifrada para poder reenviarla tal cual
+      // en el correo de bienvenida (nunca en texto plano).
+      await this.storeEncryptedPassword(userId, dto.password);
+
       const roleToAssign = dto.roleName.toUpperCase();
       const rolesIdsToAssign: { usuario_id: string; rol_id: string }[] = [];
 
@@ -104,6 +110,77 @@ export class UsersService {
       }
       this.logger.error(`Error creando usuario: ${(error as Error).message}`);
       throw new InternalServerErrorException('Error interno al crear el usuario');
+    }
+  }
+
+  async resendWelcomeEmail(id: string) {
+    const user = await this.findOne(id);
+
+    // Debe ser exactamente la contraseña que el admin ingresó al registrar
+    // al usuario. Si no está guardada (usuarios viejos), no se inventa una.
+    const password = await this.getStoredPassword(user.id);
+    if (!password) {
+      throw new BadRequestException(
+        'No hay una contraseña guardada para este usuario porque fue creado antes de habilitar esta función. Asignale una nueva contraseña y volvé a intentarlo.',
+      );
+    }
+
+    await this.mailService.sendWelcomeEmail(user.email, user.nombre, password);
+
+    return {
+      message: 'Correo de bienvenida reenviado exitosamente.',
+    };
+  }
+
+  /** Guarda la contraseña cifrada con AES-256-GCM en `usuarios.password_cifrada`. */
+  private async storeEncryptedPassword(userId: string, password: string) {
+    try {
+      const passwordCifrada = this.encryption.encrypt(password);
+      const { error } = await this.supabase
+        .getAdminClient()
+        .from('usuarios')
+        .update({ password_cifrada: passwordCifrada })
+        .eq('id', userId);
+
+      if (error) {
+        this.logger.warn(
+          `No se pudo guardar la contraseña cifrada de ${userId}: ${error.message}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo cifrar la contraseña de ${userId}: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /** Lee y descifra la contraseña guardada; `null` si no existe o no se puede descifrar. */
+  private async getStoredPassword(userId: string): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('usuarios')
+      .select('password_cifrada')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      this.logger.warn(
+        `No se pudo leer la contraseña cifrada de ${userId}: ${error.message}`,
+      );
+      return null;
+    }
+
+    const encrypted = (data as { password_cifrada?: string | null } | null)
+      ?.password_cifrada;
+    if (!encrypted) return null;
+
+    try {
+      return this.encryption.decrypt(encrypted);
+    } catch (error) {
+      this.logger.error(
+        `No se pudo descifrar la contraseña de ${userId}: ${(error as Error).message}`,
+      );
+      return null;
     }
   }
 }

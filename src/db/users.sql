@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS public.usuarios (
   creado_en   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+ALTER TABLE public.usuarios
+  ADD COLUMN IF NOT EXISTS password_cifrada TEXT;
+
 -- ------------------------------------------------------------
 -- usuario_rol (N:M)
 -- ------------------------------------------------------------

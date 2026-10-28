@@ -29,6 +29,13 @@ export class UsersController {
     return this.usersService.findAll(query);
   }
 
+  @Post(':id/reenviar-bienvenida')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Reenviar el correo de bienvenida con una nueva contraseña temporal (Solo Admin)' })
+  async resendWelcomeEmail(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.resendWelcomeEmail(id);
+  }
+
   @Get(':id')
   @Roles('ADMIN')
   @ApiOperation({ summary: 'Buscar un usuario por su ID (Solo Admin)' })

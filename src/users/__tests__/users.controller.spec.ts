@@ -8,6 +8,7 @@ describe('UsersController', () => {
   let createUserFn: ReturnType<typeof vi.fn>;
   let findAllFn: ReturnType<typeof vi.fn>;
   let findOneFn: ReturnType<typeof vi.fn>;
+  let resendWelcomeEmailFn: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     createUserFn = vi.fn().mockResolvedValue({
@@ -16,6 +17,9 @@ describe('UsersController', () => {
     });
     findAllFn = vi.fn().mockResolvedValue({ data: [], total: 0, pagina: 1, porPagina: 10 });
     findOneFn = vi.fn().mockResolvedValue({ id: 'u1', nombre: 'Ana' });
+    resendWelcomeEmailFn = vi.fn().mockResolvedValue({
+      message: 'Correo de bienvenida reenviado exitosamente.',
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UsersController],
@@ -26,6 +30,7 @@ describe('UsersController', () => {
             createUser: createUserFn,
             findAll: findAllFn,
             findOne: findOneFn,
+            resendWelcomeEmail: resendWelcomeEmailFn,
           },
         },
       ],
@@ -59,5 +64,14 @@ describe('UsersController', () => {
     const id = '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b';
     await controller.findOne(id);
     expect(findOneFn).toHaveBeenCalledWith(id);
+  });
+
+  it('resendWelcomeEmail delega a usersService.resendWelcomeEmail', async () => {
+    const id = '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b';
+
+    const result = await controller.resendWelcomeEmail(id);
+
+    expect(resendWelcomeEmailFn).toHaveBeenCalledWith(id);
+    expect(result).toHaveProperty('message');
   });
 });
