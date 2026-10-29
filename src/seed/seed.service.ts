@@ -73,7 +73,11 @@ export class SeedService implements OnApplicationBootstrap {
     this.logger.log('Bootstrap finalizado.');
   }
 
-  /** Seeds vehicle catalogs and a small operative fleet if missing. */
+  /**
+   * Seeds vehicle catalogs and a small operative fleet if missing.
+   * Denominaciones con el formato del cuartel (M-1, M-2…) y patentes en
+   * forma canónica (ver fleet/domain/license-plate.ts).
+   */
   private async seedFleet() {
     const typeIds = await this.seedVehicleTypes([
       'Autobomba',
@@ -102,43 +106,43 @@ export class SeedService implements OnApplicationBootstrap {
 
     await this.seedEmergencyVehicles([
       {
-        denominacion: 'AB-01',
-        patente: 'AB 123 CD',
+        denominacion: 'M-1',
+        patente: 'AB123CD',
         tipo: 'Autobomba',
         marca: 'Iveco',
         modelo: 'Tector',
       },
       {
-        denominacion: 'AB-02',
-        patente: 'AC 456 EF',
+        denominacion: 'M-2',
+        patente: 'AC456EF',
         tipo: 'Autobomba',
         marca: 'Mercedes-Benz',
         modelo: 'Atego 1726',
       },
       {
-        denominacion: 'R-01',
-        patente: 'AD 789 GH',
+        denominacion: 'M-3',
+        patente: 'AD789GH',
         tipo: 'Rescate',
         marca: 'Ford',
         modelo: 'F-350',
       },
       {
-        denominacion: 'TP-01',
-        patente: 'AE 234 JK',
+        denominacion: 'M-4',
+        patente: 'AE234JK',
         tipo: 'Transporte de personal',
         marca: 'Toyota',
         modelo: 'Hilux',
       },
       {
-        denominacion: 'A-01',
-        patente: 'AF 567 LM',
+        denominacion: 'M-5',
+        patente: 'AF567LM',
         tipo: 'Ambulancia',
         marca: 'Renault',
         modelo: 'Master',
       },
       {
-        denominacion: 'V-01',
-        patente: 'AG 890 NP',
+        denominacion: 'M-6',
+        patente: 'AG890NP',
         tipo: 'Van',
         marca: 'Peugeot',
         modelo: 'Boxer',

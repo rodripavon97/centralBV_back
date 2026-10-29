@@ -13,3 +13,6 @@ export interface EmergencyVehicleModel {
   valor: string;
   marcaId: string;
 }
+
+/** Catalog entry plus how many active vehicles use it ("2 móviles"). */
+export type CatalogItemWithUsage<T> = T & { enUso: number };

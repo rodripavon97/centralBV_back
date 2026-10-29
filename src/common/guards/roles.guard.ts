@@ -7,6 +7,9 @@ import {
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator.js';
 
+/** ADMIN administra la app y pasa cualquier restricción de rol. */
+export const SUPER_ROLE = 'ADMIN';
+
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
@@ -19,7 +22,10 @@ export class RolesGuard implements CanActivate {
     if (!requiredRoles) return true;
 
     const { user } = context.switchToHttp().getRequest();
-    const hasRole = requiredRoles.some((role) => user.roles?.includes(role));
+    const roles: string[] = user?.roles ?? [];
+    const hasRole =
+      roles.includes(SUPER_ROLE) ||
+      requiredRoles.some((role) => roles.includes(role));
 
     if (!hasRole) {
       throw new ForbiddenException('No tienes permisos suficientes para esta acción');

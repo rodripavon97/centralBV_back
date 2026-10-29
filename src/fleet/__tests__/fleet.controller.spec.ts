@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Test, TestingModule } from '@nestjs/testing';
 import { FleetController } from '../fleet.controller.js';
+import { ROLES_KEY } from '../../common/decorators/roles.decorator.js';
 import { FleetService } from '../fleet.service.js';
 import { CreateEmergencyVehicleDto } from '../dtos/create-emergency-vehicle.dto.js';
 import { UpdateEmergencyVehicleDto } from '../dtos/update-emergency-vehicle.dto.js';
@@ -66,5 +67,21 @@ describe('FleetController', () => {
     service.writeOff.mockResolvedValue({ id: ID });
     await controller.writeOff(ID, dto);
     expect(service.writeOff).toHaveBeenCalledWith(ID, dto);
+  });
+});
+
+describe('FleetController · roles', () => {
+  const rolesOf = (method: keyof FleetController) =>
+    Reflect.getMetadata(ROLES_KEY, FleetController.prototype[method]) as
+      string[] | undefined;
+
+  it('alta y edición son solo para AUTOMOTORES (ADMIN pasa por el guard)', () => {
+    expect(rolesOf('create')).toEqual(['AUTOMOTORES']);
+    expect(rolesOf('update')).toEqual(['AUTOMOTORES']);
+  });
+
+  it('listar y ver detalle no piden rol', () => {
+    expect(rolesOf('list')).toBeUndefined();
+    expect(rolesOf('getById')).toBeUndefined();
   });
 });

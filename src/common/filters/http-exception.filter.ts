@@ -19,12 +19,27 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exceptionResponse.message
         : exceptionResponse;
 
+    // Errores por campo (ver common/utils/field-error.ts): el front los
+    // muestra debajo del input correspondiente.
+    const fieldDetails =
+      typeof exceptionResponse === 'object' && exceptionResponse !== null
+        ? {
+            ...(typeof exceptionResponse.campo === 'string' && {
+              campo: exceptionResponse.campo,
+            }),
+            ...(typeof exceptionResponse.code === 'string' && {
+              code: exceptionResponse.code,
+            }),
+          }
+        : {};
+
     response.status(status).json({
       statusCode: status,
       timestamp: new Date().toISOString(),
       path: request.url,
       message: message || exception.message,
       error: exception.name,
+      ...fieldDetails,
     });
   }
 }

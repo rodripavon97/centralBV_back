@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Test, TestingModule } from '@nestjs/testing';
 import { VehicleCatalogController } from '../vehicle-catalog.controller.js';
+import { ROLES_KEY } from '../../common/decorators/roles.decorator.js';
 import { VehicleCatalogService } from '../vehicle-catalog.service.js';
 import { CreateCatalogItemDto } from '../dtos/create-catalog-item.dto.js';
 import { UpdateCatalogItemDto } from '../dtos/update-catalog-item.dto.js';
@@ -139,4 +140,33 @@ describe('VehicleCatalogController', () => {
       expect(service.deactivateModel).toHaveBeenCalledWith(MODELO_ID);
     });
   });
+});
+
+describe('VehicleCatalogController · roles', () => {
+  const rolesOf = (method: keyof VehicleCatalogController) =>
+    Reflect.getMetadata(
+      ROLES_KEY,
+      VehicleCatalogController.prototype[method],
+    ) as string[] | undefined;
+
+  it.each([
+    'createType',
+    'updateType',
+    'deactivateType',
+    'createBrand',
+    'updateBrand',
+    'deactivateBrand',
+    'createModel',
+    'updateModel',
+    'deactivateModel',
+  ] as const)('%s es para AUTOMOTORES', (method) => {
+    expect(rolesOf(method)).toEqual(['AUTOMOTORES']);
+  });
+
+  it.each(['findTypes', 'findBrands', 'findModels'] as const)(
+    '%s no pide rol',
+    (method) => {
+      expect(rolesOf(method)).toBeUndefined();
+    },
+  );
 });
