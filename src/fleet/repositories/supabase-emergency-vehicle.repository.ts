@@ -3,10 +3,13 @@ import { SupabaseService } from '../../supabase/supabase.service.js';
 import { throwMappedSupabaseError } from '../../supabase/supabase-error.js';
 import { paginationRange } from '../../common/utils/pagination.utils.js';
 import type {
+  CatalogColumn,
+  CatalogUsage,
   EmergencyVehicleData,
   EmergencyVehicleFilter,
   EmergencyVehicleRepository,
 } from '../domain/emergency-vehicle.repository.js';
+import { normalizeLicensePlate } from '../domain/license-plate.js';
 import type { EmergencyVehicle } from '../domain/emergency-vehicle.entity.js';
 import type { EmergencyVehicleStatus } from '../domain/emergency-vehicle.enums.js';
 
@@ -31,12 +34,17 @@ const LIST_SELECT =
 
 /**
  * Builds the PostgREST `or` filter for search by denomination or plate.
- * Values are quoted so commas/parentheses do not break syntax.
+ * Plates are stored canonical ("AB123CD"), so the plate term is normalized:
+ * "ab 123" finds "AB123CD". Values are quoted so commas/parentheses do not
+ * break syntax.
  */
 export function buildVehicleSearchFilter(busqueda: string): string | null {
   const q = busqueda.replace(/["\\%*]/g, '').trim();
   if (!q) return null;
-  return `denominacion.ilike."%${q}%",patente.ilike."%${q}%"`;
+  const plate = normalizeLicensePlate(q);
+  const filters = [`denominacion.ilike."%${q}%"`];
+  if (plate) filters.push(`patente.ilike."%${plate}%"`);
+  return filters.join(',');
 }
 
 /** Supabase adapter for emergency vehicles. */
@@ -196,6 +204,61 @@ export class SupabaseEmergencyVehicleRepository
 
   async existsByModel(modelId: string): Promise<boolean> {
     return this.existsByColumn('modelo_id', modelId);
+  }
+
+  async findIdByPatente(patente: string): Promise<string | null> {
+    const { data, error } = await this.db
+      .from('vehiculos_emergencia')
+      .select('id')
+      .eq('patente', patente)
+      .maybeSingle();
+    if (error) throwMappedSupabaseError(error);
+    return (data as { id: string } | null)?.id ?? null;
+  }
+
+  async findActiveIdByDenominationKey(key: string): Promise<string | null> {
+    const { data, error } = await this.db
+      .from('vehiculos_emergencia')
+      .select('id')
+      .eq('denominacion_clave', key)
+      .neq('estado', 'BAJA_DEFINITIVA')
+      .maybeSingle();
+    if (error) throwMappedSupabaseError(error);
+    return (data as { id: string } | null)?.id ?? null;
+  }
+
+  async findActiveDenominationsByCatalog(
+    column: CatalogColumn,
+    id: string,
+  ): Promise<string[]> {
+    const { data, error } = await this.db
+      .from('vehiculos_emergencia')
+      .select('denominacion')
+      .eq(column, id)
+      .neq('estado', 'BAJA_DEFINITIVA')
+      .order('denominacion');
+    if (error) throwMappedSupabaseError(error);
+    return ((data ?? []) as { denominacion: string }[]).map(
+      (row) => row.denominacion,
+    );
+  }
+
+  async countActiveByCatalog(): Promise<CatalogUsage> {
+    const { data, error } = await this.db
+      .from('vehiculos_emergencia')
+      .select('tipo_id, marca_id, modelo_id')
+      .neq('estado', 'BAJA_DEFINITIVA');
+    if (error) throwMappedSupabaseError(error);
+    const usage: CatalogUsage = { tipos: {}, marcas: {}, modelos: {} };
+    const add = (bucket: Record<string, number>, key: string) => {
+      bucket[key] = (bucket[key] ?? 0) + 1;
+    };
+    for (const row of (data ?? []) as Record<CatalogColumn, string>[]) {
+      add(usage.tipos, row.tipo_id);
+      add(usage.marcas, row.marca_id);
+      add(usage.modelos, row.modelo_id);
+    }
+    return usage;
   }
 
   private async existsByColumn(

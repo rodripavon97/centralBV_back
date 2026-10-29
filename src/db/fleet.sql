@@ -96,6 +96,113 @@ CREATE TABLE IF NOT EXISTS public.vehiculos_emergencia (
 ALTER TABLE public.vehiculos_emergencia
   ADD COLUMN IF NOT EXISTS motivo_baja TEXT;
 
+-- ------------------------------------------------------------
+-- US04 · Patentes normalizadas
+-- Forma canónica: solo mayúsculas y dígitos ("AB 123 CD" → "AB123CD").
+-- Las reglas están en src/fleet/domain/license-plate.ts. El UNIQUE de
+-- patente pasa a proteger la forma canónica.
+-- ------------------------------------------------------------
+DO $$
+DECLARE
+  duplicadas TEXT;
+BEGIN
+  SELECT string_agg(canonica, ', ')
+    INTO duplicadas
+  FROM (
+    SELECT upper(regexp_replace(patente, '[^A-Za-z0-9]', '', 'g')) AS canonica
+    FROM public.vehiculos_emergencia
+    GROUP BY 1
+    HAVING count(*) > 1
+  ) d;
+
+  IF duplicadas IS NOT NULL THEN
+    RAISE EXCEPTION 'Estas patentes quedan duplicadas al normalizarlas: %. Corregilas a mano y volvé a ejecutar el script.', duplicadas;
+  END IF;
+
+  UPDATE public.vehiculos_emergencia
+     SET patente = upper(regexp_replace(patente, '[^A-Za-z0-9]', '', 'g'))
+   WHERE patente <> upper(regexp_replace(patente, '[^A-Za-z0-9]', '', 'g'));
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public.vehiculos_emergencia
+    ADD CONSTRAINT vehiculos_emergencia_patente_canonica
+    CHECK (patente ~ '^[A-Z0-9]{2,12}$');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ------------------------------------------------------------
+-- US04 · Denominación normalizada y única entre móviles activos
+-- Se guarda en mayúsculas; letras + número queda "M-1" (ver
+-- src/fleet/domain/denomination.ts). La clave sin separadores
+-- (denominacion_clave) hace que "M-1" y "M1" choquen.
+-- ------------------------------------------------------------
+UPDATE public.vehiculos_emergencia
+   SET denominacion = regexp_replace(
+         upper(btrim(regexp_replace(denominacion, '\s+', ' ', 'g'))),
+         '^([A-Z]+)[ ._-]*([0-9]+)$',
+         '\1-\2'
+       )
+ WHERE denominacion <> regexp_replace(
+         upper(btrim(regexp_replace(denominacion, '\s+', ' ', 'g'))),
+         '^([A-Z]+)[ ._-]*([0-9]+)$',
+         '\1-\2'
+       );
+
+ALTER TABLE public.vehiculos_emergencia
+  ADD COLUMN IF NOT EXISTS denominacion_clave TEXT
+  GENERATED ALWAYS AS (
+    regexp_replace(upper(denominacion), '[^A-Z0-9]', '', 'g')
+  ) STORED;
+
+DO $$
+DECLARE
+  duplicadas TEXT;
+BEGIN
+  SELECT string_agg(denominacion_clave, ', ')
+    INTO duplicadas
+  FROM (
+    SELECT denominacion_clave
+    FROM public.vehiculos_emergencia
+    WHERE estado <> 'BAJA_DEFINITIVA'
+    GROUP BY 1
+    HAVING count(*) > 1
+  ) d;
+
+  IF duplicadas IS NOT NULL THEN
+    RAISE EXCEPTION 'Hay móviles activos con la misma denominación: %. Corregilas a mano y volvé a ejecutar el script.', duplicadas;
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vehiculos_emergencia_denominacion_activa
+  ON public.vehiculos_emergencia(denominacion_clave)
+  WHERE estado <> 'BAJA_DEFINITIVA';
+
+-- ------------------------------------------------------------
+-- US45 / US46 · Nombres de catálogo únicos sin importar mayúsculas
+-- ("ford" y "Ford" son la misma marca). Si ya hay repetidos, avisa y
+-- sigue: el back igual los rechaza al crear o renombrar.
+-- ------------------------------------------------------------
+DO $$ BEGIN
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_tipos_vehiculo_valor_ci
+    ON public.tipos_vehiculo (lower(valor));
+EXCEPTION WHEN unique_violation THEN
+  RAISE NOTICE 'Hay tipos de vehículo repetidos (sin importar mayúsculas); no se creó idx_tipos_vehiculo_valor_ci';
+END $$;
+
+DO $$ BEGIN
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_marcas_vehiculo_valor_ci
+    ON public.marcas_vehiculo (lower(valor));
+EXCEPTION WHEN unique_violation THEN
+  RAISE NOTICE 'Hay marcas repetidas (sin importar mayúsculas); no se creó idx_marcas_vehiculo_valor_ci';
+END $$;
+
+DO $$ BEGIN
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_modelos_vehiculo_valor_ci
+    ON public.modelos_vehiculo (marca_id, lower(valor));
+EXCEPTION WHEN unique_violation THEN
+  RAISE NOTICE 'Hay modelos repetidos en una marca (sin importar mayúsculas); no se creó idx_modelos_vehiculo_valor_ci';
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_vehiculos_emergencia_tipo
   ON public.vehiculos_emergencia(tipo_id);
 

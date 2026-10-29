@@ -1,20 +1,30 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsNotEmpty, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 
 const trimValue = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 
 /** Body to create an emergency vehicle (always starts as OPERATIVO). */
 export class CreateEmergencyVehicleDto {
-  @ApiProperty({ example: 'AB123CD' })
+  @ApiProperty({
+    example: 'AB 123 CD',
+    description: 'Se guarda en forma canónica (AB123CD)',
+  })
   @Transform(trimValue)
   @IsString()
   @IsNotEmpty({ message: 'La patente es obligatoria' })
   @MaxLength(20)
   patente: string;
 
-  @ApiProperty({ example: 'AB-01' })
+  @ApiProperty({ example: 'M-1' })
   @Transform(trimValue)
   @IsString()
   @IsNotEmpty({ message: 'La denominación es obligatoria' })
@@ -32,4 +42,12 @@ export class CreateEmergencyVehicleDto {
   @ApiProperty({ format: 'uuid' })
   @IsUUID('4')
   modeloId: string;
+
+  @ApiPropertyOptional({
+    description:
+      'true para guardar una patente que no coincide con ningún formato argentino conocido',
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'confirmarPatenteEspecial debe ser verdadero o falso' })
+  confirmarPatenteEspecial?: boolean;
 }

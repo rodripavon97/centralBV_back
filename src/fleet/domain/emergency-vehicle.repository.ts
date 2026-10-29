@@ -14,7 +14,9 @@ export interface EmergencyVehicleFilter {
 
 /** General vehicle data (no status). Used on create and update. */
 export interface EmergencyVehicleData {
+  /** Canonical plate (see domain/license-plate.ts). */
   patente: string;
+  /** Normalized denomination (see domain/denomination.ts). */
   denominacion: string;
   tipoId: string;
   marcaId: string;
@@ -44,6 +46,26 @@ export interface EmergencyVehicleRepository {
   existsByType(typeId: string): Promise<boolean>;
   existsByBrand(brandId: string): Promise<boolean>;
   existsByModel(modelId: string): Promise<boolean>;
+  /** Id of the vehicle with that canonical plate (any status), or null. */
+  findIdByPatente(patente: string): Promise<string | null>;
+  /** Id of the active vehicle with that denomination key, or null. */
+  findActiveIdByDenominationKey(key: string): Promise<string | null>;
+  /** Denominations of active vehicles that use a catalog entry, sorted. */
+  findActiveDenominationsByCatalog(
+    column: CatalogColumn,
+    id: string,
+  ): Promise<string[]>;
+  /** How many active vehicles use each catalog entry. */
+  countActiveByCatalog(): Promise<CatalogUsage>;
+}
+
+export type CatalogColumn = 'tipo_id' | 'marca_id' | 'modelo_id';
+
+/** Active vehicles per catalog id (ids with no vehicles are absent). */
+export interface CatalogUsage {
+  tipos: Record<string, number>;
+  marcas: Record<string, number>;
+  modelos: Record<string, number>;
 }
 
 export const EMERGENCY_VEHICLE_REPOSITORY = 'EMERGENCY_VEHICLE_REPOSITORY';

@@ -19,7 +19,11 @@ import { UpdateEmergencyVehicleDto } from './dtos/update-emergency-vehicle.dto.j
 import { ListEmergencyVehiclesDto } from './dtos/list-emergency-vehicles.dto.js';
 import { WriteOffEmergencyVehicleDto } from './dtos/write-off-emergency-vehicle.dto.js';
 
-/** HTTP API for emergency vehicles (`/flota/vehiculos`). */
+/**
+ * HTTP API for emergency vehicles (`/flota/vehiculos`).
+ * Any signed-in user can read; create and update need AUTOMOTORES
+ * (ADMIN always passes, see RolesGuard).
+ */
 @ApiTags('Fleet')
 @ApiBearerAuth()
 @Controller('flota/vehiculos')
@@ -43,14 +47,16 @@ export class FleetController {
     return this.fleetService.findById(id);
   }
 
-  /** Create a vehicle in OPERATIVO status. */
+  /** Create a vehicle in OPERATIVO status (AUTOMOTORES). */
+  @Roles('AUTOMOTORES')
   @Post()
   @ApiOperation({ summary: 'Create an emergency vehicle (OPERATIVO)' })
   async create(@Body() dto: CreateEmergencyVehicleDto) {
     return this.fleetService.create(dto);
   }
 
-  /** Update general data (everything except status). */
+  /** Update general data, everything except status (AUTOMOTORES). */
+  @Roles('AUTOMOTORES')
   @Patch(':id')
   @ApiOperation({ summary: 'Update general vehicle data' })
   async update(

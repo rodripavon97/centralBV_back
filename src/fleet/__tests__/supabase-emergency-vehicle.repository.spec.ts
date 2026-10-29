@@ -64,6 +64,16 @@ describe('buildVehicleSearchFilter', () => {
     );
   });
 
+  it('normaliza el término de patente (las patentes se guardan canónicas)', () => {
+    expect(buildVehicleSearchFilter('ab 123')).toBe(
+      'denominacion.ilike."%ab 123%",patente.ilike."%AB123%"',
+    );
+  });
+
+  it('no filtra por patente si el término no tiene letras ni números', () => {
+    expect(buildVehicleSearchFilter('-')).toBe('denominacion.ilike."%-%"');
+  });
+
   it('retorna null si queda vacío tras sanitizar', () => {
     expect(buildVehicleSearchFilter('"%*')).toBeNull();
   });
@@ -214,5 +224,55 @@ describe('SupabaseEmergencyVehicleRepository', () => {
     from.mockReturnValue(createQueryMock({ data: [{ id: VEHICLE_ID }], error: null }));
     await expect(repo.existsByModel(MODELO_ID)).resolves.toBe(true);
     expect(from).toHaveBeenCalledWith('vehiculos_emergencia');
+  });
+
+  it('findIdByPatente devuelve el id o null', async () => {
+    const q = createQueryMock({ data: { id: VEHICLE_ID }, error: null });
+    from.mockReturnValue(q);
+    await expect(repo.findIdByPatente('AB123CD')).resolves.toBe(VEHICLE_ID);
+    expect(q.eq).toHaveBeenCalledWith('patente', 'AB123CD');
+
+    from.mockReturnValue(createQueryMock({ data: null, error: null }));
+    await expect(repo.findIdByPatente('AB123CD')).resolves.toBeNull();
+  });
+
+  it('findActiveIdByDenominationKey filtra por clave y excluye bajas', async () => {
+    const q = createQueryMock({ data: { id: VEHICLE_ID }, error: null });
+    from.mockReturnValue(q);
+    await expect(repo.findActiveIdByDenominationKey('M1')).resolves.toBe(
+      VEHICLE_ID,
+    );
+    expect(q.eq).toHaveBeenCalledWith('denominacion_clave', 'M1');
+    expect(q.neq).toHaveBeenCalledWith('estado', 'BAJA_DEFINITIVA');
+  });
+
+  it('findActiveDenominationsByCatalog devuelve las denominaciones', async () => {
+    const q = createQueryMock({
+      data: [{ denominacion: 'M-1' }, { denominacion: 'M-2' }],
+      error: null,
+    });
+    from.mockReturnValue(q);
+    await expect(
+      repo.findActiveDenominationsByCatalog('marca_id', MARCA_ID),
+    ).resolves.toEqual(['M-1', 'M-2']);
+    expect(q.eq).toHaveBeenCalledWith('marca_id', MARCA_ID);
+    expect(q.neq).toHaveBeenCalledWith('estado', 'BAJA_DEFINITIVA');
+  });
+
+  it('countActiveByCatalog cuenta móviles activos por tipo, marca y modelo', async () => {
+    from.mockReturnValue(
+      createQueryMock({
+        data: [
+          { tipo_id: TIPO_ID, marca_id: MARCA_ID, modelo_id: MODELO_ID },
+          { tipo_id: TIPO_ID, marca_id: MARCA_ID, modelo_id: 'otro' },
+        ],
+        error: null,
+      }),
+    );
+    await expect(repo.countActiveByCatalog()).resolves.toEqual({
+      tipos: { [TIPO_ID]: 2 },
+      marcas: { [MARCA_ID]: 2 },
+      modelos: { [MODELO_ID]: 1, otro: 1 },
+    });
   });
 });

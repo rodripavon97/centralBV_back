@@ -44,4 +44,26 @@ describe('RolesGuard', () => {
       ForbiddenException,
     );
   });
+
+  it('ADMIN pasa cualquier restricción de rol', () => {
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['AUTOMOTORES']);
+    expect(guard.canActivate(createContext({ roles: ['ADMIN'] }))).toBe(true);
+  });
+
+  it('AUTOMOTORES pasa donde se lo pide y no en otros roles', () => {
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['AUTOMOTORES']);
+    expect(guard.canActivate(createContext({ roles: ['AUTOMOTORES'] }))).toBe(
+      true,
+    );
+    expect(() =>
+      guard.canActivate(createContext({ roles: ['COMUN'] })),
+    ).toThrow(ForbiddenException);
+  });
+
+  it('rechaza si no hay usuario en la request', () => {
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['AUTOMOTORES']);
+    expect(() => guard.canActivate(createContext(undefined))).toThrow(
+      ForbiddenException,
+    );
+  });
 });

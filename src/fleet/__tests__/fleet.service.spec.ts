@@ -34,14 +34,27 @@ const vehicleFixture = (
   ...overrides,
 });
 
-const createDto = () =>
+const createDto = (overrides: Partial<CreateEmergencyVehicleDto> = {}) =>
   Object.assign(new CreateEmergencyVehicleDto(), {
     patente: 'AB123CD',
-    denominacion: 'Unidad 1',
+    denominacion: 'M-1',
     tipoId: TIPO_ID,
     marcaId: MARCA_ID,
     modeloId: MODELO_ID,
+    ...overrides,
   });
+
+/** Body (status + error) of the HttpException a promise rejects with. */
+const errorBody = async (promise: Promise<unknown>) => {
+  const error = await promise.then(
+    () => {
+      throw new Error('se esperaba un error');
+    },
+    (e: unknown) => e,
+  );
+  const http = error as { getStatus(): number; getResponse(): unknown };
+  return { status: http.getStatus(), body: http.getResponse() };
+};
 
 describe('FleetService', () => {
   let service: FleetService;
@@ -54,6 +67,8 @@ describe('FleetService', () => {
     existsByType: ReturnType<typeof vi.fn>;
     existsByBrand: ReturnType<typeof vi.fn>;
     existsByModel: ReturnType<typeof vi.fn>;
+    findIdByPatente: ReturnType<typeof vi.fn>;
+    findActiveIdByDenominationKey: ReturnType<typeof vi.fn>;
   };
   let catalog: {
     findTypes: ReturnType<typeof vi.fn>;
@@ -71,6 +86,8 @@ describe('FleetService', () => {
       existsByType: vi.fn(),
       existsByBrand: vi.fn(),
       existsByModel: vi.fn(),
+      findIdByPatente: vi.fn().mockResolvedValue(null),
+      findActiveIdByDenominationKey: vi.fn().mockResolvedValue(null),
     };
     catalog = {
       findTypes: vi.fn().mockResolvedValue([{ id: TIPO_ID, valor: 'Ambulancia' }]),
@@ -135,11 +152,91 @@ describe('FleetService', () => {
       await expect(service.create(createDto())).resolves.toEqual(created);
       expect(vehicles.create).toHaveBeenCalledWith({
         patente: 'AB123CD',
-        denominacion: 'Unidad 1',
+        denominacion: 'M-1',
         tipoId: TIPO_ID,
         marcaId: MARCA_ID,
         modeloId: MODELO_ID,
       });
+    });
+
+    it('guarda patente y denominación normalizadas', async () => {
+      vehicles.create.mockResolvedValue(vehicleFixture());
+      await service.create(
+        createDto({ patente: ' ab 123-cd ', denominacion: ' m 4 ' }),
+      );
+      expect(vehicles.create).toHaveBeenCalledWith(
+        expect.objectContaining({ patente: 'AB123CD', denominacion: 'M-4' }),
+      );
+      expect(vehicles.findIdByPatente).toHaveBeenCalledWith('AB123CD');
+      expect(vehicles.findActiveIdByDenominationKey).toHaveBeenCalledWith('M4');
+    });
+
+    it('deja igual una denominación que no es letras + número', async () => {
+      vehicles.create.mockResolvedValue(vehicleFixture());
+      await service.create(createDto({ denominacion: 'ab-04' }));
+      expect(vehicles.create).toHaveBeenCalledWith(
+        expect.objectContaining({ denominacion: 'AB-04' }),
+      );
+    });
+
+    it('rechaza patente duplicada aunque esté escrita distinto', async () => {
+      vehicles.findIdByPatente.mockResolvedValue('otro-id');
+      const { status, body } = await errorBody(
+        service.create(createDto({ patente: 'ab 123 cd' })),
+      );
+      expect(status).toBe(409);
+      expect(body).toEqual({
+        message: 'Ya existe un móvil con esa patente',
+        campo: 'patente',
+        code: 'PATENTE_DUPLICADA',
+      });
+      expect(vehicles.create).not.toHaveBeenCalled();
+    });
+
+    it('rechaza denominación duplicada entre móviles activos (M1 = M-1)', async () => {
+      vehicles.findActiveIdByDenominationKey.mockResolvedValue('otro-id');
+      const { status, body } = await errorBody(
+        service.create(createDto({ denominacion: 'M1' })),
+      );
+      expect(status).toBe(409);
+      expect(body).toEqual({
+        message: 'Ya existe un móvil con esa denominación',
+        campo: 'denominacion',
+        code: 'DENOMINACION_DUPLICADA',
+      });
+    });
+
+    it('pide confirmación para una patente de formato desconocido', async () => {
+      const { status, body } = await errorBody(
+        service.create(createDto({ patente: 'BV-01' })),
+      );
+      expect(status).toBe(400);
+      expect(body).toEqual(
+        expect.objectContaining({
+          campo: 'patente',
+          code: 'PATENTE_FORMATO_DESCONOCIDO',
+        }),
+      );
+      expect(vehicles.create).not.toHaveBeenCalled();
+    });
+
+    it('guarda una patente especial confirmada', async () => {
+      vehicles.create.mockResolvedValue(vehicleFixture({ patente: 'BV01' }));
+      await service.create(
+        createDto({ patente: 'bv-01', confirmarPatenteEspecial: true }),
+      );
+      expect(vehicles.create).toHaveBeenCalledWith(
+        expect.objectContaining({ patente: 'BV01' }),
+      );
+    });
+
+    it('rechaza patente vacía después de normalizar o fuera de largo', async () => {
+      await expect(service.create(createDto({ patente: ' - . ' }))).rejects.toThrow(
+        'La patente es obligatoria',
+      );
+      await expect(
+        service.create(createDto({ patente: 'A'.repeat(13) })),
+      ).rejects.toThrow('La patente debe tener entre 2 y 12 letras o números');
     });
 
     it('rechaza catálogo inválido', async () => {
@@ -163,13 +260,38 @@ describe('FleetService', () => {
   describe('update', () => {
     it('actualiza datos generales', async () => {
       vehicles.findById.mockResolvedValue(vehicleFixture());
-      const updated = vehicleFixture({ denominacion: 'Unidad 2' });
+      const updated = vehicleFixture({ denominacion: 'M-2' });
       vehicles.update.mockResolvedValue(updated);
-      const dto = Object.assign(new UpdateEmergencyVehicleDto(), {
-        ...createDto(),
-        denominacion: 'Unidad 2',
-      });
+      const dto = Object.assign(
+        new UpdateEmergencyVehicleDto(),
+        createDto({ denominacion: 'M-2' }),
+      );
       await expect(service.update(VEHICLE_ID, dto)).resolves.toEqual(updated);
+    });
+
+    it('no choca consigo mismo al buscar duplicados', async () => {
+      vehicles.findById.mockResolvedValue(vehicleFixture());
+      vehicles.findIdByPatente.mockResolvedValue(VEHICLE_ID);
+      vehicles.findActiveIdByDenominationKey.mockResolvedValue(VEHICLE_ID);
+      vehicles.update.mockResolvedValue(vehicleFixture());
+      await service.update(
+        VEHICLE_ID,
+        createDto() as UpdateEmergencyVehicleDto,
+      );
+      expect(vehicles.update).toHaveBeenCalled();
+    });
+
+    it('no vuelve a pedir confirmación si la patente especial no cambió', async () => {
+      vehicles.findById.mockResolvedValue(vehicleFixture({ patente: 'BV01' }));
+      vehicles.update.mockResolvedValue(vehicleFixture({ patente: 'BV01' }));
+      await service.update(
+        VEHICLE_ID,
+        createDto({ patente: 'BV 01' }) as UpdateEmergencyVehicleDto,
+      );
+      expect(vehicles.update).toHaveBeenCalledWith(
+        VEHICLE_ID,
+        expect.objectContaining({ patente: 'BV01' }),
+      );
     });
 
     it('lanza NotFound si no existe', async () => {

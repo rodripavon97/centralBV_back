@@ -201,3 +201,33 @@ describe('forbidNonWhitelisted (fleet DTOs)', () => {
     ).resolves.toMatchObject({ errors: expect.arrayContaining(['tipoId']) });
   });
 });
+
+describe('US04 · alta y edición de móviles', () => {
+  it.each([CreateEmergencyVehicleDto, UpdateEmergencyVehicleDto])(
+    '%p acepta confirmarPatenteEspecial booleano',
+    async (Cls) => {
+      const { dto, errors } = await validateDto(Cls, {
+        ...validVehicleBody(),
+        confirmarPatenteEspecial: true,
+      });
+      expect(errors).toEqual([]);
+      expect(dto.confirmarPatenteEspecial).toBe(true);
+    },
+  );
+
+  it('rechaza confirmarPatenteEspecial que no es booleano', async () => {
+    const { errors } = await validateDto(CreateEmergencyVehicleDto, {
+      ...validVehicleBody(),
+      confirmarPatenteEspecial: 'si',
+    });
+    expect(errors).toContain('confirmarPatenteEspecial');
+  });
+
+  it('no deja elegir el estado inicial (siempre OPERATIVO)', async () => {
+    const { errors } = await validateDto(CreateEmergencyVehicleDto, {
+      ...validVehicleBody(),
+      estado: 'FUERA_SERVICIO',
+    });
+    expect(errors).toContain('estado');
+  });
+});
