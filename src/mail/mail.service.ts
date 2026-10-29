@@ -1,0 +1,29 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { MailerService } from '@nestjs-modules/mailer';
+import { MailBuilder } from './builders/mail.builder.js';
+import { WelcomeEmailBuilder } from './builders/welcome-email.builder.js';
+
+@Injectable()
+export class MailService {
+  private readonly logger = new Logger(MailService.name);
+
+  constructor(private readonly mailerService: MailerService) {}
+
+  /** Envía cualquier correo armado con un builder. */
+  async send(mail: MailBuilder) {
+    const options = mail.build();
+
+    try {
+      await this.mailerService.sendMail(options);
+      this.logger.log(`✅ Correo enviado a ${options.to}`);
+    } catch (error) {
+      this.logger.error(
+        `❌ Error enviando correo a ${options.to}: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  async sendWelcomeEmail(to: string, nombre: string, password: string) {
+    await this.send(new WelcomeEmailBuilder({ to, nombre, password }));
+  }
+}

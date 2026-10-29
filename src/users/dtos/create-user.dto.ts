@@ -1,15 +1,21 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, Matches, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsNotEmpty, IsString, Matches, MinLength } from 'class-validator';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'Juan' })
   @IsString()
   @IsNotEmpty({ message: 'El nombre es obligatorio' })
+  @Matches(/^[A-Za-záéíóúÁÉÍÓÚñÑüÜ\s]+$/, {
+    message: 'El nombre solo puede contener letras y espacios',
+  })
   nombre: string;
 
   @ApiProperty({ example: 'Perez' })
   @IsString()
   @IsNotEmpty({ message: 'El apellido es obligatorio' })
+  @Matches(/^[A-Za-záéíóúÁÉÍÓÚñÑüÜ\s]+$/, {
+    message: 'El apellido solo puede contener letras y espacios',
+  })
   apellido: string;
 
   @ApiProperty({ example: 'juan@centralbv.com' })
@@ -25,8 +31,15 @@ export class CreateUserDto {
   })
   password: string;
 
-  @ApiProperty({ example: 'ADMINISTRATIVO', description: 'Nombre exacto del rol' })
+  @ApiProperty({
+    example: 'administrativo',
+    description: 'Rol del usuario: administrativo, comun, automotores o admin',
+    enum: ['administrativo', 'comun', 'automotores', 'admin'],
+  })
   @IsString()
   @IsNotEmpty({ message: 'Debe seleccionar un rol' })
+  @IsIn(['administrativo', 'comun', 'automotores', 'admin'], {
+    message: 'El rol debe ser uno de: administrativo, comun, automotores, admin',
+  })
   roleName: string;
 }

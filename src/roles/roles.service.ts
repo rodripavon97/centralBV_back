@@ -4,6 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service.js';
+import { RoleResponseDto } from './dtos/roles-response.dto.js';
 
 @Injectable()
 export class RolesService {
@@ -37,5 +38,16 @@ export class RolesService {
     }
 
     return { message: 'Rol asignado correctamente' };
+  }
+
+  async findAll() : Promise<RoleResponseDto[]> {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('roles')
+      .select('id, nombre')
+      .order('nombre', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    return data as RoleResponseDto[];
   }
 }

@@ -1,16 +1,13 @@
-import {
-  Controller,
-  UseGuards,
-  Get,
-  Patch,
-  Param,
-  ParseUUIDPipe,
-} from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { Controller, UseGuards, Post, Body, Get, Query, Param, ParseUUIDPipe } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../common/guards/roles.guard.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
 import { UsersService } from './users.service.js';
+import { CreateUserDto } from './dtos/create-user.dto.js';
+import { ListUsersDto } from './dtos/list-user.dto.js';
+import { UserResponseDto } from './dtos/user-response.dto.js';
+
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -19,26 +16,42 @@ import { UsersService } from './users.service.js';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Get('pending')
+  @Post()
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Ver usuarios pendientes de aprobación (Solo Admin)' })
-  async getPending() {
-    return this.usersService.getPendingUsers();
+  @ApiOperation({ summary: 'Crear un nuevo usuario (Solo Admin)' })
+  async create(@Body() dto: CreateUserDto) {
+    return this.usersService.createUser(dto);
   }
 
-  @Patch(':id/approve')
-  @Roles('ADMIN')
-  @ApiOperation({ summary: 'Aprobar la creación de un usuario (Solo Admin)' })
-  async approve(@Param('id', ParseUUIDPipe) id: string) {
-    return this.usersService.approveUser(id);
-  }
-
-  // We're including this endpoint in case you need to list users in a table in the future
   @Get()
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Listar todos los usuarios (Solo Admin)' })
-  async findAll() {
-    // This endpoint is currently not implemented, but it's here for future use if you need to list users in a table.
-    return []; 
+  @ApiOperation({ summary: 'Listar usuarios con búsqueda, filtros y paginación (Solo Admin)' })
+  async findAll(@Query() query: ListUsersDto) {
+    return this.usersService.findAll(query);
+  }
+
+  @Post(':id/reenviar-bienvenida')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Reenviar el correo de bienvenida con una nueva contraseña temporal (Solo Admin)' })
+  async resendWelcomeEmail(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.resendWelcomeEmail(id);
+  }
+
+  @Get(':id')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Buscar un usuario por su ID (Solo Admin)' })
+  @ApiParam({
+    name: 'id',
+    description: 'UUID del usuario',
+    example: '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b',
+  })
+  @ApiResponse({
+    status: 200,
+    type: UserResponseDto,
+    description: 'Usuario encontrado',
+  })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.findOne(id);
   }
 }

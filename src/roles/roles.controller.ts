@@ -1,10 +1,11 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { Controller, Post, Body, UseGuards, Get } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../common/guards/roles.guard.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
 import { RolesService } from './roles.service.js';
 import { AssignRoleDto } from './dtos/assing-roles.dtos.js';
+import { RoleResponseDto } from './dtos/roles-response.dto.js';
 
 @ApiTags('Roles')
 @ApiBearerAuth()
@@ -18,5 +19,13 @@ export class RolesController {
   @ApiOperation({ summary: 'Asignar un rol a un usuario (Solo Admin)' })
   async assign(@Body() dto: AssignRoleDto) {
     return this.rolesService.assignRole(dto.usuario_id, dto.rol_id);
+  }
+
+  @Get('all-roles')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Obtener todos los roles para el menú desplegable (Solo Admin)' })
+  @ApiResponse({ status: 200, type: [RoleResponseDto], description: 'Lista de roles' })
+  async findAll() {
+    return this.rolesService.findAll();
   }
 }

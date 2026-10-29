@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import {
+  BadRequestException,
   ConflictException,
   InternalServerErrorException,
   NotFoundException,
@@ -8,25 +9,33 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { User } from '../domain/user.entity.js';
 import { USER_REPOSITORY } from '../domain/user.repository.js';
 import { SupabaseService } from '../../supabase/supabase.service.js';
+import { MailService } from '../../mail/mail.service.js';
 import { UsersService } from '../users.service.js';
 import { CreateUserDto } from '../dtos/create-user.dto.js';
+import { EncryptionService } from '../../common/security/encryption.service.js';
 
 describe('UsersService', () => {
   let service: UsersService;
   let findByEmail: ReturnType<typeof vi.fn>;
   let findById: ReturnType<typeof vi.fn>;
+  let findAll: ReturnType<typeof vi.fn>;
   let create: ReturnType<typeof vi.fn>;
   let createUser: ReturnType<typeof vi.fn>;
+  let updateUserById: ReturnType<typeof vi.fn>;
   let from: ReturnType<typeof vi.fn>;
+  let sendWelcomeEmail: ReturnType<typeof vi.fn>;
+  let encrypt: ReturnType<typeof vi.fn>;
+  let decrypt: ReturnType<typeof vi.fn>;
 
   const dto = Object.assign(new CreateUserDto(), {
     nombre: 'Juan',
     apellido: 'Perez',
     email: 'juan@centralbv.com',
     password: 'Temporal123!',
-    roleName: 'ADMINISTRATIVO',
+    roleName: 'administrativo',
   });
 
+  /** Helper para crear un chain builder de Supabase (select().eq().single(), etc.) */
   const mockChain = (resolved: unknown) => {
     const chain: Record<string, ReturnType<typeof vi.fn>> = {};
     const self = new Proxy(chain, {
@@ -47,25 +56,38 @@ describe('UsersService', () => {
   beforeEach(async () => {
     findByEmail = vi.fn();
     findById = vi.fn();
+    findAll = vi.fn();
     create = vi.fn().mockResolvedValue(undefined);
     createUser = vi.fn();
+    updateUserById = vi.fn().mockResolvedValue({ data: null, error: null });
     from = vi.fn();
+    sendWelcomeEmail = vi.fn().mockResolvedValue(undefined);
+    encrypt = vi.fn().mockImplementation((value: string) => `v1.enc(${value})`);
+    decrypt = vi.fn();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         {
           provide: USER_REPOSITORY,
-          useValue: { findByEmail, findById, create },
+          useValue: { findByEmail, findById, create, findAll },
         },
         {
           provide: SupabaseService,
           useValue: {
             getAdminClient: () => ({
-              auth: { admin: { createUser } },
+              auth: { admin: { createUser, updateUserById } },
               from,
             }),
           },
+        },
+        {
+          provide: MailService,
+          useValue: { sendWelcomeEmail },
+        },
+        {
+          provide: EncryptionService,
+          useValue: { encrypt, decrypt },
         },
       ],
     }).compile();
@@ -73,16 +95,29 @@ describe('UsersService', () => {
     service = module.get(UsersService);
   });
 
-  describe('createUser', () => {
-    it('rechaza si el email ya existe', async () => {
+  // ─── EMAIL DUPLICADO ─────────────────────────────────────────
+
+  describe('email duplicado', () => {
+    it('lanza ConflictException si el email ya existe en el sistema', async () => {
       findByEmail.mockResolvedValue(
         new User('u1', dto.email, 'Juan', 'Perez', true),
       );
       await expect(service.createUser(dto)).rejects.toThrow(ConflictException);
-      expect(createUser).not.toHaveBeenCalled();
     });
 
-    it('crea usuario, asigna rol y retorna mensaje de éxito', async () => {
+    it('no intenta crear credenciales en Supabase si el email ya existe', async () => {
+      findByEmail.mockResolvedValue(
+        new User('u1', dto.email, 'Juan', 'Perez', true),
+      );
+      await expect(service.createUser(dto)).rejects.toThrow();
+      expect(createUser).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── CREACIÓN EXITOSA ─────────────────────────────────────────
+
+  describe('creación exitosa', () => {
+    beforeEach(() => {
       findByEmail.mockResolvedValue(null);
       createUser.mockResolvedValue({
         data: { user: { id: 'user-new' } },
@@ -97,23 +132,107 @@ describe('UsersService', () => {
         }
         return mockChain({ data: null, error: null });
       });
+    });
 
-      const result = await service.createUser(dto);
+    it('crea el usuario en el repositorio con los datos correctos', async () => {
+      await service.createUser(dto);
 
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'user-new',
           email: dto.email,
+          nombre: dto.nombre,
+          apellido: dto.apellido,
           activo: true,
         }),
       );
+    });
+
+    it('retorna mensaje de éxito y el userId', async () => {
+      const result = await service.createUser(dto);
+
       expect(result).toEqual({
-        message: 'Usuario creado exitosamente y correo de bienvenida enviado',
+        message: 'Usuario creado exitosamente. Se ha enviado un correo con las credenciales.',
         userId: 'user-new',
       });
     });
 
-    it('falla si Supabase Auth no puede crear credenciales', async () => {
+    it('envía el correo de bienvenida con email, nombre y contraseña temporal', async () => {
+      await service.createUser(dto);
+
+      expect(sendWelcomeEmail).toHaveBeenCalledWith(
+        dto.email,
+        dto.nombre,
+        dto.password,
+      );
+    });
+
+    it('envía el correo exactamente una vez', async () => {
+      await service.createUser(dto);
+      expect(sendWelcomeEmail).toHaveBeenCalledTimes(1);
+    });
+
+    it('guarda la contraseña cifrada para poder reenviarla luego', async () => {
+      await service.createUser(dto);
+
+      expect(encrypt).toHaveBeenCalledWith(dto.password);
+      expect(from).toHaveBeenCalledWith('usuarios');
+    });
+  });
+
+  // ─── HERENCIA DE ROLES ────────────────────────────────────────
+
+  describe('herencia de roles', () => {
+    it('asigna también el rol COMUN cuando el rol es ADMINISTRATIVO', async () => {
+      findByEmail.mockResolvedValue(null);
+      createUser.mockResolvedValue({
+        data: { user: { id: 'user-adm' } },
+        error: null,
+      });
+
+      const insertSpy = vi.fn().mockReturnValue(
+        mockChain({ data: null, error: null }),
+      );
+
+      from.mockImplementation((table: string) => {
+        if (table === 'roles') {
+          const selectCalls: string[] = [];
+          return {
+            select: vi.fn().mockImplementation(() => ({
+              eq: vi.fn().mockImplementation((_col: string, val: string) => {
+                selectCalls.push(val);
+                if (val === 'ADMINISTRATIVO') {
+                  return mockChain({ data: { id: 'role-admin' }, error: null });
+                }
+                if (val === 'COMUN') {
+                  return mockChain({ data: { id: 'role-comun' }, error: null });
+                }
+                return mockChain({ data: null, error: null });
+              }),
+            })),
+          };
+        }
+        if (table === 'usuario_rol') {
+          return { insert: insertSpy };
+        }
+        return mockChain({ data: null, error: null });
+      });
+
+      await service.createUser(dto);
+
+      expect(insertSpy).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          { usuario_id: 'user-adm', rol_id: 'role-admin' },
+          { usuario_id: 'user-adm', rol_id: 'role-comun' },
+        ]),
+      );
+    });
+  });
+
+  // ─── ERRORES DE SUPABASE AUTH ─────────────────────────────────
+
+  describe('errores de Supabase Auth', () => {
+    it('lanza InternalServerErrorException si Supabase Auth falla', async () => {
       findByEmail.mockResolvedValue(null);
       createUser.mockResolvedValue({
         data: { user: null },
@@ -124,8 +243,12 @@ describe('UsersService', () => {
         InternalServerErrorException,
       );
     });
+  });
 
-    it('falla si el rol no existe', async () => {
+  // ─── ROL INEXISTENTE ──────────────────────────────────────────
+
+  describe('rol inexistente', () => {
+    it('lanza NotFoundException si el rol no existe en la base de datos', async () => {
       findByEmail.mockResolvedValue(null);
       createUser.mockResolvedValue({
         data: { user: { id: 'user-new' } },
@@ -139,46 +262,108 @@ describe('UsersService', () => {
     });
   });
 
-  describe('getPendingUsers', () => {
-    it('lista usuarios inactivos', async () => {
-      const pending = [{ id: 'u1', activo: false }];
-      from.mockReturnValue(mockChain({ data: pending, error: null }));
+  // ─── FIND ONE ─────────────────────────────────────────────────
 
-      await expect(service.getPendingUsers()).resolves.toEqual(pending);
+  describe('findOne', () => {
+    it('retorna el usuario si existe', async () => {
+      const user = new User('u1', 'a@b.com', 'Ana', 'Lopez', true);
+      findById.mockResolvedValue(user);
+      await expect(service.findOne('u1')).resolves.toEqual(user);
     });
 
-    it('propaga errores de Supabase', async () => {
-      from.mockReturnValue(
-        mockChain({ data: null, error: { message: 'db down' } }),
-      );
-      await expect(service.getPendingUsers()).rejects.toThrow(
-        InternalServerErrorException,
-      );
+    it('lanza NotFoundException si el usuario no existe', async () => {
+      findById.mockResolvedValue(null);
+      await expect(service.findOne('missing')).rejects.toThrow(NotFoundException);
     });
   });
 
-  describe('approveUser', () => {
-    it('aprueba un usuario existente', async () => {
-      findById.mockResolvedValue(
-        new User('u1', 'a@b.com', 'A', 'B', false),
-      );
-      from.mockReturnValue(
-        mockChain({
-          data: { id: 'u1', activo: true },
-          error: null,
-        }),
-      );
+  // ─── REENVÍO DE BIENVENIDA ────────────────────────────────────
 
-      const result = await service.approveUser('u1');
-      expect(result.message).toBe('Usuario aprobado exitosamente');
-      expect(result.user).toEqual({ id: 'u1', activo: true });
+  describe('resendWelcomeEmail', () => {
+    const user = new User(
+      '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b',
+      'ana@centralbv.com',
+      'Ana',
+      'Lopez',
+      true,
+    );
+    const encryptedPassword = 'v1.iv.tag.data';
+    const originalPassword = 'Temporal123!';
+
+    beforeEach(() => {
+      findById.mockResolvedValue(user);
+      from.mockImplementation((table: string) => {
+        if (table === 'usuarios') {
+          return mockChain({
+            data: { password_cifrada: encryptedPassword },
+            error: null,
+          });
+        }
+        return mockChain({ data: null, error: null });
+      });
+      decrypt.mockReturnValue(originalPassword);
     });
 
-    it('retorna 404 si el usuario no existe', async () => {
+    it('lanza NotFoundException si el usuario no existe', async () => {
       findById.mockResolvedValue(null);
-      await expect(service.approveUser('missing')).rejects.toThrow(
+
+      await expect(service.resendWelcomeEmail(user.id)).rejects.toThrow(
         NotFoundException,
       );
+      expect(sendWelcomeEmail).not.toHaveBeenCalled();
+    });
+
+    it('reenvía la misma contraseña que el admin ingresó al registrar', async () => {
+      const result = await service.resendWelcomeEmail(user.id);
+
+      expect(decrypt).toHaveBeenCalledWith(encryptedPassword);
+      expect(sendWelcomeEmail).toHaveBeenCalledWith(
+        user.email,
+        user.nombre,
+        originalPassword,
+      );
+      expect(updateUserById).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        message: 'Correo de bienvenida reenviado exitosamente.',
+      });
+    });
+
+    it('lanza BadRequestException si no hay contraseña guardada (usuario viejo)', async () => {
+      from.mockImplementation(() =>
+        mockChain({ data: { password_cifrada: null }, error: null }),
+      );
+
+      await expect(service.resendWelcomeEmail(user.id)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(updateUserById).not.toHaveBeenCalled();
+      expect(sendWelcomeEmail).not.toHaveBeenCalled();
+    });
+
+    it('lanza BadRequestException si el descifrado falla, sin generar una nueva', async () => {
+      decrypt.mockImplementation(() => {
+        throw new Error('bad payload');
+      });
+
+      await expect(service.resendWelcomeEmail(user.id)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(updateUserById).not.toHaveBeenCalled();
+      expect(sendWelcomeEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── FIND ALL ─────────────────────────────────────────────────
+
+  describe('findAll', () => {
+    it('retorna la lista paginada de usuarios', async () => {
+      findAll.mockResolvedValue({ items: [], total: 0 });
+      const result = await service.findAll({ pagina: 1, porPagina: 10 } as any);
+      expect(result).toHaveProperty('items');
+      expect(result).toHaveProperty('total');
+      expect(result).toHaveProperty('pagina');
+      expect(result).toHaveProperty('paginas');
+      expect(result).toHaveProperty('porPagina');
     });
   });
 });

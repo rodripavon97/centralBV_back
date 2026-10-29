@@ -34,6 +34,41 @@ describe('SupabaseUserRepository', () => {
     return self;
   };
 
+  /** Mock de la cadena de Supabase para findAll: registra los select y el head. */
+  const mockFindAll = (options: { count: number; rows: unknown[] }) => {
+    const selectCalls: Array<{ columns: string; head?: boolean }> = [];
+
+    from.mockImplementation(() => {
+      let resolved: unknown = { data: options.rows, error: null };
+
+      const chain: Record<string, any> = {};
+      const self = new Proxy(chain, {
+        get(target, prop: string) {
+          if (prop === 'then') {
+            return (resolve: (v: unknown) => unknown) =>
+              Promise.resolve(resolved).then(resolve);
+          }
+          if (prop === 'select') {
+            return (columns: string, selectOptions?: { head?: boolean }) => {
+              selectCalls.push({ columns, head: selectOptions?.head });
+              resolved = selectOptions?.head
+                ? { data: null, count: options.count, error: null }
+                : { data: options.rows, error: null };
+              return self;
+            };
+          }
+          if (!target[prop]) {
+            target[prop] = vi.fn().mockReturnValue(self);
+          }
+          return target[prop];
+        },
+      });
+      return self;
+    });
+
+    return selectCalls;
+  };
+
   beforeEach(async () => {
     from = vi.fn();
     const module: TestingModule = await Test.createTestingModule({
@@ -76,9 +111,7 @@ describe('SupabaseUserRepository', () => {
       expect.objectContaining({ id: 'u1', email: row.email }),
     );
 
-    from.mockReturnValue(
-      mockTerminal({ data: null, error: { message: 'PGRST116' } }),
-    );
+    from.mockReturnValue(mockTerminal({ data: null, error: null }));
     await expect(repo.findByEmail('missing@x.com')).resolves.toBeNull();
   });
 
@@ -90,5 +123,54 @@ describe('SupabaseUserRepository', () => {
 
     from.mockReturnValue(mockTerminal({ data: null, error: null }));
     await expect(repo.findById('missing')).resolves.toBeNull();
+  });
+
+  it('findById incluye los roles del usuario', async () => {
+    from.mockReturnValue(
+      mockTerminal({
+        data: {
+          ...row,
+          usuario_rol: [
+            { roles: { nombre: 'ADMINISTRATIVO' } },
+            { roles: { nombre: 'COMUN' } },
+            { roles: null },
+          ],
+        },
+        error: null,
+      }),
+    );
+
+    const user = await repo.findById('u1');
+
+    expect(user?.roles).toEqual(['ADMINISTRATIVO', 'COMUN']);
+  });
+
+  describe('findAll', () => {
+    it('incluye usuarios sin roles (LEFT JOIN por defecto)', async () => {
+      const calls = mockFindAll({
+        count: 1,
+        rows: [{ ...row, usuario_rol: [] }],
+      });
+
+      const result = await repo.findAll({ pagina: 1, porPagina: 10 } as any);
+
+      expect(result.total).toBe(1);
+      expect(result.items[0].roles).toEqual([]);
+      expect(
+        calls.some((call) => !call.head && !call.columns.includes('!inner')),
+      ).toBe(true);
+    });
+
+    it('filtra por rol usando INNER JOIN', async () => {
+      const calls = mockFindAll({
+        count: 1,
+        rows: [{ ...row, usuario_rol: [{ roles: { nombre: 'ADMIN' } }] }],
+      });
+
+      await repo.findAll({ pagina: 1, porPagina: 10, rol: 'admin' } as any);
+
+      expect(calls.length).toBeGreaterThan(0);
+      expect(calls.every((call) => call.columns.includes('!inner'))).toBe(true);
+    });
   });
 });
