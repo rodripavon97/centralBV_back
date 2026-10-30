@@ -44,4 +44,30 @@ describe('MailService', () => {
       service.sendWelcomeEmail('carlos@centralbv.com', 'Carlos', 'Pepita03!'),
     ).resolves.toBeUndefined();
   });
+
+  it('envía el correo de recuperación con el enlace indicado', async () => {
+    await service.sendRecoveryEmail(
+      'carlos@centralbv.com',
+      'Carlos',
+      'https://app.centralbv.com/update-password#access_token=abc',
+    );
+
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'carlos@centralbv.com',
+        subject: 'Recuperación de contraseña - CentralBV',
+        html: expect.stringContaining(
+          'https://app.centralbv.com/update-password#access_token=abc',
+        ),
+      }),
+    );
+  });
+
+  it('no lanza si falla el envío de recuperación', async () => {
+    sendMail.mockRejectedValue(new Error('SMTP caído'));
+
+    await expect(
+      service.sendRecoveryEmail('carlos@centralbv.com', 'Carlos', 'https://example.com'),
+    ).resolves.toBeUndefined();
+  });
 });
