@@ -1,4 +1,6 @@
 # CentralBV Backend
+![Coverage](./badges/coverage-summary.svg)
+
 
 API backend for **CentralBV**, built with [NestJS](https://nestjs.com) and [Supabase](https://supabase.com).
 

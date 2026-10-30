@@ -21,6 +21,10 @@ jobs:
     name: Lint · Test · Build
     runs-on: ubuntu-latest
 
+    # Necesitamos permisos de escritura para que la acción pueda guardar la imagen del badge en el repositorio
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -42,9 +46,17 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
+      # 1. Modificamos el comando para asegurar que genere el reporte json-summary
       - name: Run tests
-        run: pnpm run test
+        run: pnpm run test -- --coverage --coverageReporters="json-summary"
 
+      # 2. Agregamos la acción que lee ese json y genera el badge (.svg)
+      - name: Generar Badge de Cobertura
+        uses: jpb06/coverage-badges-generation-action@v2
+        with:
+          coverage-summary-path: './coverage/coverage-summary.json'
+          badges-icon: 'test-generic'
+
+      # Tu paso de compilación sigue igual
       - name: Build
         run: pnpm run build
-
