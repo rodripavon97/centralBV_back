@@ -6,6 +6,7 @@ import {
   BadRequestException, // <-- 1. Agregado Logger
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import {
   USER_REPOSITORY,
 } from '../users/domain/user.repository.js';
@@ -29,6 +30,7 @@ export class AuthService {
     private readonly supabase: SupabaseService,
     private readonly jwtService: JwtService,
     private readonly mailService: MailService, // <-- 2. Inyectamos MailService
+    private readonly config: ConfigService,
   ) { }
 
   async login(dto: LoginDto) {
@@ -84,41 +86,68 @@ export class AuthService {
     };
   }
 
+  private static readonly GENERIC_RECOVERY_MESSAGE =
+    'Si el correo está registrado, recibirás un enlace en breve.';
+
   async forgotPassword(dto: ForgotPasswordDto) {
+    const genericResponse = { message: AuthService.GENERIC_RECOVERY_MESSAGE };
     const adminDb = this.supabase.getAdminClient();
 
     try {
       // Buscamos si el usuario existe para obtener su nombre y personalizar el correo
       const user = await this.userRepo.findByEmail(dto.email);
 
-      // Generamos el link de recuperación
+      // Si no existe, fingimos demencia por seguridad (evitar enumeración de usuarios)
+      if (!user) {
+        this.logger.warn(`Intento de recuperación para usuario inexistente: ${dto.email}`);
+        return genericResponse;
+      }
+
+      // Generamos el link de recuperación. Supabase emite un token de un solo uso
+      // y lo invalida al emitir otro; su vigencia se define en
+      // Authentication > Providers > Email > Email OTP Expiration.
       const { data, error } = await adminDb.auth.admin.generateLink({
         type: 'recovery',
         email: dto.email,
         options: {
-          // Esta URL es a donde irá el usuario cuando haga clic en el correo.
-          // Debe ser la ruta de tu Frontend que reciba el token.
-          redirectTo: 'http://localhost:3000/update-password',
+          // Ruta del frontend que recibe el token del correo.
+          redirectTo: this.passwordResetRedirectUrl(),
         },
       });
 
-      // Si hay error o no existe, fingimos demencia por seguridad (evitar enumeración de usuarios)
-      if (error || !data.properties?.action_link || !user) {
-        this.logger.warn(`Intento de recuperación fallido o usuario inexistente: ${dto.email}`);
-        return { message: 'Si el correo está registrado, recibirás un enlace en breve.' };
+      if (error || !data.properties?.action_link) {
+        this.logger.error(
+          `No se pudo generar el enlace de recuperación para ${dto.email}: ${
+            error?.message ?? 'sin action_link'
+          }`,
+        );
+        return genericResponse;
       }
 
       // Enviamos el correo con nuestro template y MailService
-      this.mailService.sendRecoveryEmail(user.email, user.nombre, data.properties.action_link);
+      await this.mailService.sendRecoveryEmail(
+        user.email,
+        user.nombre,
+        data.properties.action_link,
+      );
 
-      return { message: 'Si el correo está registrado, recibirás un enlace en breve.' };
+      return genericResponse;
     } catch (error) {
       this.logger.error(`Error en forgotPassword: ${(error as Error).message}`);
-      return { message: 'Si el correo está registrado, recibirás un enlace en breve.' };
+      return genericResponse;
     }
   }
 
-    async resetPassword(dto: ResetPasswordDto) {
+  private passwordResetRedirectUrl(): string {
+    return (
+      this.config.get<string>('PASSWORD_RESET_REDIRECT_URL') ??
+      'http://localhost:5173/update-password'
+    );
+  }
+
+  private static readonly RECOVERY_AMR_METHODS = new Set(['recovery', 'otp', 'magiclink']);
+
+  async resetPassword(dto: ResetPasswordDto) {
     // 1. Validar que las contraseñas coincidan
     if (dto.newPassword !== dto.confirmPassword) {
       throw new BadRequestException('Las contraseñas no coinciden. Por favor, verifícalas.');
@@ -131,30 +160,72 @@ export class AuthService {
 
     if (authError || !user) {
       this.logger.error(`Error getUser: ${authError?.message}`);
-      throw new BadRequestException('El enlace ha expirado o ya fue utilizado. Por favor, solicita uno nuevo.');
+      throw new BadRequestException(
+        'El enlace ha expirado o ya fue utilizado. Por favor, solicita uno nuevo.',
+      );
     }
 
-    // 3. Actualizar la contraseña en Supabase Auth
-    const { error: updateError } = await this.supabase
-      .getAdminClient()
-      .auth.admin.updateUserById(user.id, {
-        password: dto.newPassword,
-      });
+    // 3. Solo aceptamos tokens emitidos por un enlace de recuperación.
+    // Un access token de un login normal (amr: "password") no debe servir para
+    // cambiar la contraseña sin conocer la actual.
+    if (!this.isRecoveryToken(dto.token)) {
+      this.logger.warn(`Intento de reset con token no recuperación: ${user.email}`);
+      throw new BadRequestException(
+        'El enlace ha expirado o ya fue utilizado. Por favor, solicita uno nuevo.',
+      );
+    }
 
-    // 4. Manejo de errores
+    const adminDb = this.supabase.getAdminClient();
+
+    // 4. Revocar todas las sesiones activas del usuario (incluida la del enlace).
+    // Usamos el token de recuperación como JWT del usuario; debe hacerse antes
+    // del update porque cambiar la contraseña invalida esa sesión.
+    const { error: signOutError } = await adminDb.auth.admin.signOut(dto.token, 'global');
+
+    if (signOutError) {
+      // No bloqueamos el reset: updateUserById también revoca las sesiones.
+      this.logger.warn(
+        `No se pudieron revocar las sesiones de ${user.email}: ${signOutError.message}`,
+      );
+    }
+
+    // 5. Actualizar la contraseña en Supabase Auth
+    const { error: updateError } = await adminDb.auth.admin.updateUserById(user.id, {
+      password: dto.newPassword,
+    });
+
+    // 6. Manejo de errores
     if (updateError) {
       this.logger.error(`Error actualizando contraseña: ${updateError.message}`);
-      
+
       if (updateError.message.includes('different from the old password')) {
         throw new BadRequestException('La contraseña nueva no puede ser igual a la anterior.');
       }
-      
+
       throw new BadRequestException('No se pudo actualizar la contraseña.');
     }
 
-    // 5. Retorno exitoso
+    // 7. Retorno exitoso
     return {
       message: 'Contraseña actualizada correctamente. Ya puedes iniciar sesión con tu nueva clave.',
     };
+  }
+
+  /**
+   * Indica si el access token fue emitido por un enlace de recuperación.
+   * El token ya fue validado con Supabase (getUser), así que sus claims son
+   * confiables; solo los decodificamos para leer `amr`.
+   */
+  private isRecoveryToken(token: string): boolean {
+    const payload = this.jwtService.decode<{
+      amr?: Array<{ method?: string } | string>;
+    }>(token);
+
+    if (!Array.isArray(payload?.amr)) return false;
+
+    return payload.amr.some((entry) => {
+      const method = typeof entry === 'string' ? entry : entry?.method;
+      return !!method && AuthService.RECOVERY_AMR_METHODS.has(method);
+    });
   }
 }

@@ -28,13 +28,20 @@ export class MailService {
     await this.send(new WelcomeEmailBuilder({ to, nombre, password }));
   }
 
-  sendRecoveryEmail(to: string, nombre: string, recoveryLink: string): void {
+  async sendRecoveryEmail(to: string, nombre: string, recoveryLink: string): Promise<void> {
     const html = buildRecoveryEmailHtml({ nombre, recoveryLink });
 
-    this.mailerService.sendMail({
-      to,
-      subject: 'Recuperación de contraseña - CentralBV',
-      html,
-    }).catch((error) => this.logger.error(`❌ Error enviando recuperación a ${to}: ${error.message}`));
+    try {
+      await this.mailerService.sendMail({
+        to,
+        subject: 'Recuperación de contraseña - CentralBV',
+        html,
+      });
+      this.logger.log(`✅ Correo de recuperación enviado a ${to}`);
+    } catch (error) {
+      this.logger.error(
+        `❌ Error enviando recuperación a ${to}: ${(error as Error).message}`,
+      );
+    }
   }
 }

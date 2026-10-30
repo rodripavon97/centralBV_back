@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { User } from '../../users/domain/user.entity.js';
 import { USER_REPOSITORY } from '../../users/domain/user.repository.js';
@@ -10,6 +11,7 @@ import { AuthService } from '../auth.service.js';
 
 describe('AuthService', () => {
   const jwtSecret = 'test-secret';
+  const passwordResetUrl = 'http://localhost:5173/update-password';
 
   let authService: AuthService;
   let jwtService: JwtService;
@@ -17,9 +19,12 @@ describe('AuthService', () => {
   let signInWithPassword: ReturnType<typeof vi.fn>;
   let getUser: ReturnType<typeof vi.fn>;
   let updateUserById: ReturnType<typeof vi.fn>;
+  let signOut: ReturnType<typeof vi.fn>;
   let generateLink: ReturnType<typeof vi.fn>;
   let sendRecoveryEmail: ReturnType<typeof vi.fn>;
   let rolesEq: ReturnType<typeof vi.fn>;
+  let validRecoveryToken: string;
+  let passwordSessionToken: string;
 
   const activeUser = new User(
     'user-1',
@@ -34,6 +39,7 @@ describe('AuthService', () => {
     signInWithPassword = vi.fn();
     getUser = vi.fn();
     updateUserById = vi.fn();
+    signOut = vi.fn().mockResolvedValue({ error: null });
     generateLink = vi.fn();
     sendRecoveryEmail = vi.fn();
     rolesEq = vi.fn().mockResolvedValue({
@@ -54,6 +60,7 @@ describe('AuthService', () => {
         auth: {
           admin: {
             updateUserById,
+            signOut,
             generateLink,
           },
         },
@@ -72,11 +79,30 @@ describe('AuthService', () => {
         { provide: USER_REPOSITORY, useValue: { findByEmail } },
         { provide: SupabaseService, useValue: supabaseMock },
         { provide: MailService, useValue: { sendRecoveryEmail } },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: vi.fn((key: string) =>
+              key === 'PASSWORD_RESET_REDIRECT_URL' ? passwordResetUrl : undefined,
+            ),
+          },
+        },
       ],
     }).compile();
 
     authService = module.get(AuthService);
     jwtService = module.get(JwtService);
+
+    validRecoveryToken = jwtService.sign({
+      sub: activeUser.id,
+      email: activeUser.email,
+      amr: [{ method: 'otp', timestamp: Math.floor(Date.now() / 1000) }],
+    });
+    passwordSessionToken = jwtService.sign({
+      sub: activeUser.id,
+      email: activeUser.email,
+      amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }],
+    });
   });
 
   it('inicia sesión correctamente con credenciales válidas', async () => {
@@ -178,7 +204,6 @@ describe('AuthService', () => {
   });
 
   describe('resetPassword', () => {
-    const validToken = 'valid-jwt-token';
     const newPassword = 'Password123!';
 
     it('restablece la contraseña exitosamente cuando las contraseñas son iguales y el token es válido', async () => {
@@ -192,15 +217,63 @@ describe('AuthService', () => {
       });
 
       const result = await authService.resetPassword({
-        token: validToken,
+        token: validRecoveryToken,
         newPassword,
         confirmPassword: newPassword,
       });
 
-      expect(getUser).toHaveBeenCalledWith(validToken);
+      expect(getUser).toHaveBeenCalledWith(validRecoveryToken);
       expect(updateUserById).toHaveBeenCalledWith('user-1', {
         password: newPassword,
       });
+      expect(signOut).toHaveBeenCalledWith(validRecoveryToken, 'global');
+      expect(result).toEqual({
+        message:
+          'Contraseña actualizada correctamente. Ya puedes iniciar sesión con tu nueva clave.',
+      });
+    });
+
+    it('rechaza un access token de login normal (amr password) aunque sea válido', async () => {
+      getUser.mockResolvedValue({
+        data: { user: { id: 'user-1', email: 'admin@centralbv.com' } },
+        error: null,
+      });
+
+      await expect(
+        authService.resetPassword({
+          token: passwordSessionToken,
+          newPassword,
+          confirmPassword: newPassword,
+        }),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'El enlace ha expirado o ya fue utilizado. Por favor, solicita uno nuevo.',
+        ),
+      );
+
+      expect(updateUserById).not.toHaveBeenCalled();
+      expect(signOut).not.toHaveBeenCalled();
+    });
+
+    it('no falla el reset si no se pueden revocar las sesiones', async () => {
+      getUser.mockResolvedValue({
+        data: { user: { id: 'user-1', email: 'admin@centralbv.com' } },
+        error: null,
+      });
+      updateUserById.mockResolvedValue({
+        data: { user: { id: 'user-1' } },
+        error: null,
+      });
+      signOut.mockResolvedValue({ error: { message: 'Session not found' } });
+
+      const result = await authService.resetPassword({
+        token: validRecoveryToken,
+        newPassword,
+        confirmPassword: newPassword,
+      });
+
+      expect(updateUserById).toHaveBeenCalled();
+      expect(signOut).toHaveBeenCalledWith(validRecoveryToken, 'global');
       expect(result).toEqual({
         message:
           'Contraseña actualizada correctamente. Ya puedes iniciar sesión con tu nueva clave.',
@@ -210,7 +283,7 @@ describe('AuthService', () => {
     it('devuelve un error si las contraseñas no coinciden', async () => {
       await expect(
         authService.resetPassword({
-          token: validToken,
+          token: validRecoveryToken,
           newPassword: 'Password123!',
           confirmPassword: 'DifferentPassword123!',
         }),
@@ -280,7 +353,7 @@ describe('AuthService', () => {
 
       await expect(
         authService.resetPassword({
-          token: validToken,
+          token: validRecoveryToken,
           newPassword,
           confirmPassword: newPassword,
         }),
@@ -303,7 +376,7 @@ describe('AuthService', () => {
 
       await expect(
         authService.resetPassword({
-          token: validToken,
+          token: validRecoveryToken,
           newPassword,
           confirmPassword: newPassword,
         }),
@@ -314,12 +387,15 @@ describe('AuthService', () => {
   });
 
   describe('forgotPassword', () => {
+    const genericMessage =
+      'Si el correo está registrado, recibirás un enlace en breve.';
+
     it('genera enlace y envía correo si el usuario existe y se genera el enlace correctamente', async () => {
       findByEmail.mockResolvedValue(activeUser);
       generateLink.mockResolvedValue({
         data: {
           properties: {
-            action_link: 'http://localhost:3000/update-password#access_token=xyz',
+            action_link: `${passwordResetUrl}#access_token=xyz`,
           },
         },
         error: null,
@@ -334,34 +410,57 @@ describe('AuthService', () => {
         type: 'recovery',
         email: activeUser.email,
         options: {
-          redirectTo: 'http://localhost:3000/update-password',
+          redirectTo: passwordResetUrl,
         },
       });
       expect(sendRecoveryEmail).toHaveBeenCalledWith(
         activeUser.email,
         activeUser.nombre,
-        'http://localhost:3000/update-password#access_token=xyz',
+        `${passwordResetUrl}#access_token=xyz`,
       );
-      expect(result).toEqual({
-        message: 'Si el correo está registrado, recibirás un enlace en breve.',
-      });
+      expect(result).toEqual({ message: genericMessage });
     });
 
-    it('retorna mensaje genérico sin enviar correo si el usuario no existe', async () => {
+    it('retorna mensaje genérico sin consultar Supabase si el usuario no existe', async () => {
       findByEmail.mockResolvedValue(null);
-      generateLink.mockResolvedValue({
-        data: { properties: { action_link: 'http://localhost:3000/test' } },
-        error: null,
-      });
 
       const result = await authService.forgotPassword({
         email: 'inexistente@centralbv.com',
       });
 
+      expect(generateLink).not.toHaveBeenCalled();
       expect(sendRecoveryEmail).not.toHaveBeenCalled();
-      expect(result).toEqual({
-        message: 'Si el correo está registrado, recibirás un enlace en breve.',
+      expect(result).toEqual({ message: genericMessage });
+    });
+
+    it('retorna mensaje genérico sin enviar correo si Supabase no genera el enlace', async () => {
+      findByEmail.mockResolvedValue(activeUser);
+      generateLink.mockResolvedValue({
+        data: { properties: {} },
+        error: { message: 'User not found' },
       });
+
+      const result = await authService.forgotPassword({
+        email: activeUser.email,
+      });
+
+      expect(sendRecoveryEmail).not.toHaveBeenCalled();
+      expect(result).toEqual({ message: genericMessage });
+    });
+
+    it('retorna mensaje genérico si el envío del correo falla', async () => {
+      findByEmail.mockResolvedValue(activeUser);
+      generateLink.mockResolvedValue({
+        data: { properties: { action_link: `${passwordResetUrl}#access_token=xyz` } },
+        error: null,
+      });
+      sendRecoveryEmail.mockRejectedValue(new Error('SMTP caído'));
+
+      const result = await authService.forgotPassword({
+        email: activeUser.email,
+      });
+
+      expect(result).toEqual({ message: genericMessage });
     });
   });
 });
