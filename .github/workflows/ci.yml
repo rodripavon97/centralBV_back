@@ -21,7 +21,6 @@ jobs:
     name: Lint · Test · Build
     runs-on: ubuntu-latest
 
-    # Necesitamos permisos de escritura para que la acción pueda guardar la imagen del badge en el repositorio
     permissions:
       contents: write
 
@@ -46,17 +45,22 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
-      # 1. Modificamos el comando para asegurar que genere el reporte json-summary
+      # Ejecuta tests y genera la cobertura
       - name: Run tests
-        run: pnpm run test -- --coverage --coverageReporters="json-summary"
+        run: pnpm run test -- --coverage
 
-      # 2. Agregamos la acción que lee ese json y genera el badge (.svg)
+      # Genera el badge de Vitest usando npx directamente
       - name: Generar Badge de Cobertura
-        uses: jpb06/coverage-badges-generation-action@v2
-        with:
-          coverage-summary-path: './coverage/coverage-summary.json'
-          badges-icon: 'test-generic'
+        run: npx vitest-coverage-report-badge
 
-      # Tu paso de compilación sigue igual
+      # Commitea el badge generado de vuelta a tu repositorio
+      - name: Commit Badge
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add ./coverage/badge-*.svg || true
+          git commit -m "chore: update coverage badge [skip ci]" -a || true
+          git push
+
       - name: Build
         run: pnpm run build
