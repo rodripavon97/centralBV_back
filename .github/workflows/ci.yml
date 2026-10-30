@@ -21,9 +21,6 @@ jobs:
     name: Lint · Test · Build
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: write
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -45,22 +42,8 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
-      # Ejecuta tests y genera la cobertura
       - name: Run tests
-        run: pnpm run test -- --coverage
-
-      # Genera el badge de Vitest usando npx directamente
-      - name: Generar Badge de Cobertura
-        run: npx vitest-coverage-report-badge
-
-      # Commitea el badge generado de vuelta a tu repositorio
-      - name: Commit Badge
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add ./coverage/badge-*.svg || true
-          git commit -m "chore: update coverage badge [skip ci]" -a || true
-          git push
+        run: pnpm run test
 
       - name: Build
         run: pnpm run build
