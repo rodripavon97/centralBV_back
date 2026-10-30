@@ -24,8 +24,8 @@ export class ListEmergencyVehiclesDto {
     example: 'AB123',
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(80)
+  @IsString({ message: 'La búsqueda debe ser un texto' })
+  @MaxLength(80, { message: 'La búsqueda no puede superar los 80 caracteres' })
   busqueda?: string;
 
   @ApiPropertyOptional({ enum: ACTIVE_VEHICLE_STATUSES })
@@ -38,7 +38,7 @@ export class ListEmergencyVehiclesDto {
     description: 'Filter by vehicle type id',
   })
   @IsOptional()
-  @IsUUID('4')
+  @IsUUID('4', { message: 'El tipo de vehículo no es válido' })
   tipoId?: string;
 
   @ApiPropertyOptional({
@@ -46,26 +46,28 @@ export class ListEmergencyVehiclesDto {
     default: 'denominacion',
   })
   @IsOptional()
-  @IsIn(ORDER_FIELDS)
+  @IsIn(ORDER_FIELDS, {
+    message: 'Solo se puede ordenar por denominación o patente',
+  })
   ordenPor: 'denominacion' | 'patente' = 'denominacion';
 
   @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'asc' })
   @IsOptional()
-  @IsIn(['asc', 'desc'])
+  @IsIn(['asc', 'desc'], { message: 'El orden debe ser asc o desc' })
   orden: 'asc' | 'desc' = 'asc';
 
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
+  @IsInt({ message: 'La página debe ser un número entero' })
+  @Min(1, { message: 'La página debe ser 1 o mayor' })
   pagina: number = 1;
 
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
+  @IsInt({ message: 'La cantidad por página debe ser un número entero' })
+  @Min(1, { message: 'La cantidad por página debe ser 1 o mayor' })
+  @Max(100, { message: 'La cantidad por página no puede superar 100' })
   porPagina: number = 20;
 }

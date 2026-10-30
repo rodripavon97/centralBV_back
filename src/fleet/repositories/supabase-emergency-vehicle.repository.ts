@@ -11,7 +11,11 @@ import type {
 } from '../domain/emergency-vehicle.repository.js';
 import { normalizeLicensePlate } from '../domain/license-plate.js';
 import type { EmergencyVehicle } from '../domain/emergency-vehicle.entity.js';
-import type { EmergencyVehicleStatus } from '../domain/emergency-vehicle.enums.js';
+import {
+  ACTIVE_VEHICLE_STATUSES,
+  type EmergencyVehicleStatus,
+  type FleetSummary,
+} from '../domain/emergency-vehicle.enums.js';
 
 /** Row from vehiculos_emergencia_listado (vehicle + catalog labels). */
 interface EmergencyVehicleListRow {
@@ -49,9 +53,7 @@ export function buildVehicleSearchFilter(busqueda: string): string | null {
 
 /** Supabase adapter for emergency vehicles. */
 @Injectable()
-export class SupabaseEmergencyVehicleRepository
-  implements EmergencyVehicleRepository
-{
+export class SupabaseEmergencyVehicleRepository implements EmergencyVehicleRepository {
   constructor(private readonly supabase: SupabaseService) {}
 
   private get db() {
@@ -131,6 +133,22 @@ export class SupabaseEmergencyVehicleRepository
       ),
       total,
     };
+  }
+
+  async countByStatus(): Promise<FleetSummary> {
+    const counts = await Promise.all(
+      ACTIVE_VEHICLE_STATUSES.map(async (estado) => {
+        const { count, error } = await this.db
+          .from('vehiculos_emergencia')
+          .select('id', { count: 'exact', head: true })
+          .eq('estado', estado);
+        if (error) throwMappedSupabaseError(error);
+        return [estado, count ?? 0] as const;
+      }),
+    );
+    const porEstado = Object.fromEntries(counts) as FleetSummary['porEstado'];
+    const total = counts.reduce((sum, [, n]) => sum + n, 0);
+    return { total, porEstado };
   }
 
   async findById(id: string): Promise<EmergencyVehicle | null> {

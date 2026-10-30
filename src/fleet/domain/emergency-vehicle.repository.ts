@@ -1,5 +1,8 @@
 import type { EmergencyVehicle } from './emergency-vehicle.entity.js';
-import type { ActiveVehicleStatus } from './emergency-vehicle.enums.js';
+import type {
+  ActiveVehicleStatus,
+  FleetSummary,
+} from './emergency-vehicle.enums.js';
 
 /** Filters and pagination for the active vehicle list (excludes BAJA_DEFINITIVA). */
 export interface EmergencyVehicleFilter {
@@ -32,6 +35,8 @@ export interface EmergencyVehicleRepository {
     filter: EmergencyVehicleFilter,
   ): Promise<{ items: EmergencyVehicle[]; total: number }>;
   findById(id: string): Promise<EmergencyVehicle | null>;
+  /** Counts active vehicles (excludes BAJA_DEFINITIVA) by status. */
+  countByStatus(): Promise<FleetSummary>;
   create(data: EmergencyVehicleData): Promise<EmergencyVehicle>;
   /** Returns null if missing or already BAJA_DEFINITIVA. */
   update(

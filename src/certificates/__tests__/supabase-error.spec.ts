@@ -74,4 +74,78 @@ describe('throwMappedSupabaseError', () => {
       }),
     ).toThrow('Ya existe una marca con ese nombre (puede estar desactivada)');
   });
+
+  const messageOf = (fn: () => never) => {
+    try {
+      fn();
+    } catch (e) {
+      return (e as Error).message;
+    }
+    return undefined;
+  };
+
+  it('usa un mensaje genérico en español para constraints desconocidas', () => {
+    expect(
+      messageOf(() =>
+        throwMappedSupabaseError({
+          code: '23505',
+          message: 'duplicate key value violates unique constraint "otra"',
+        }),
+      ),
+    ).toBe('Ya existe un registro con esos datos');
+  });
+
+  it('traduce la patente que no es canónica', () => {
+    expect(
+      messageOf(() =>
+        throwMappedSupabaseError({
+          code: '23514',
+          message:
+            'new row violates check constraint "vehiculos_emergencia_patente_canonica"',
+        }),
+      ),
+    ).toBe('La patente solo puede tener letras y números');
+  });
+
+  it('distingue FK en uso de FK inexistente', () => {
+    expect(
+      messageOf(() =>
+        throwMappedSupabaseError({
+          code: '23503',
+          message:
+            'update or delete on table "x" violates foreign key constraint',
+          details: 'Key (id)=(1) is still referenced from table "y".',
+        }),
+      ),
+    ).toMatch(/hay datos que dependen/);
+    expect(
+      messageOf(() =>
+        throwMappedSupabaseError({
+          code: '23503',
+          message:
+            'insert or update on table "modelos_vehiculo" violates foreign key constraint "modelos_vehiculo_marca_id_fkey"',
+        }),
+      ),
+    ).toBe('La marca indicada no existe');
+  });
+
+  it('no expone el mensaje crudo de errores inesperados de Postgres', () => {
+    expect(
+      messageOf(() =>
+        throwMappedSupabaseError({
+          code: '42P01',
+          message: 'relation "x" does not exist',
+        }),
+      ),
+    ).toBe('Ocurrió un error inesperado. Intentá de nuevo más tarde.');
+  });
+
+  it('mapea valores con formato inválido a BadRequestException', () => {
+    expect(() =>
+      throwMappedSupabaseError({
+        code: '22P02',
+        message: 'invalid input syntax',
+      }),
+    ).toThrow(BadRequestException);
+  });
 });

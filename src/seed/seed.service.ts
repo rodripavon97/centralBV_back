@@ -7,6 +7,7 @@ import type {
   PaymentStatus,
   RequestStatus,
 } from '../certificates/domain/certificate-request.enums.js';
+import type { ActiveVehicleStatus } from '../fleet/domain/emergency-vehicle.enums.js';
 
 type SeedVictim = {
   dni: string;
@@ -70,6 +71,15 @@ export class SeedService implements OnApplicationBootstrap {
       ['ADMINISTRATIVO', 'COMUN'], 
     );
 
+    // Encargado de automotores: alta y modificación de móviles (US04).
+    await this.seedUser(
+      'automotores@centralbv.com',
+      'Admin123!',
+      'Usuario',
+      'Automotores',
+      ['AUTOMOTORES', 'COMUN'],
+    );
+
     await this.seedCertificateRequests();
     await this.seedFleet();
 
@@ -77,9 +87,11 @@ export class SeedService implements OnApplicationBootstrap {
   }
 
   /**
-   * Seeds vehicle catalogs and a small operative fleet if missing.
+   * Seeds vehicle catalogs and a demo fleet if missing.
    * Denominaciones con el formato del cuartel (M-1, M-2…) y patentes en
-   * forma canónica (ver fleet/domain/license-plate.ts).
+   * forma canónica (ver fleet/domain/license-plate.ts). La flota tiene más
+   * de 12 móviles y todos los estados activos para probar la paginación y
+   * los colores del dashboard (US05). Nunca modifica móviles existentes.
    */
   private async seedFleet() {
     const typeIds = await this.seedVehicleTypes([
@@ -88,6 +100,8 @@ export class SeedService implements OnApplicationBootstrap {
       'Transporte de personal',
       'Ambulancia',
       'Van',
+      'Cisterna',
+      'Moto',
     ]);
     const brandIds = await this.seedVehicleBrands([
       'Iveco',
@@ -97,6 +111,8 @@ export class SeedService implements OnApplicationBootstrap {
       'Ford',
       'Volkswagen',
       'Renault',
+      'Scania',
+      'Honda',
     ]);
     const modelIds = await this.seedVehicleModels([ 
       { valor: 'Tector', marca: 'Iveco' },
@@ -105,6 +121,12 @@ export class SeedService implements OnApplicationBootstrap {
       { valor: 'Hilux', marca: 'Toyota' },
       { valor: 'Master', marca: 'Renault' },
       { valor: 'Boxer', marca: 'Peugeot' },
+      { valor: 'Daily', marca: 'Iveco' },
+      { valor: 'Sprinter', marca: 'Mercedes-Benz' },
+      { valor: 'Ranger', marca: 'Ford' },
+      { valor: 'Amarok', marca: 'Volkswagen' },
+      { valor: 'P320', marca: 'Scania' },
+      { valor: 'XR 250', marca: 'Honda' },
     ], brandIds);
 
     await this.seedEmergencyVehicles([
@@ -150,6 +172,16 @@ export class SeedService implements OnApplicationBootstrap {
         marca: 'Peugeot',
         modelo: 'Boxer',
       },
+      { denominacion: 'M-7', patente: 'JKL482', tipo: 'Autobomba', marca: 'Scania', modelo: 'P320', estado: 'MANTENIMIENTO' },
+      { denominacion: 'M-8', patente: 'AH321QR', tipo: 'Autobomba', marca: 'Iveco', modelo: 'Tector', estado: 'OBSERVACIONES' },
+      { denominacion: 'M-9', patente: 'B1234567', tipo: 'Cisterna', marca: 'Mercedes-Benz', modelo: 'Atego 1726', estado: 'FUERA_SERVICIO' },
+      { denominacion: 'M-10', patente: 'AI654ST', tipo: 'Rescate', marca: 'Ford', modelo: 'Ranger' },
+      { denominacion: 'M-11', patente: 'MNP937', tipo: 'Rescate', marca: 'Volkswagen', modelo: 'Amarok', estado: 'OBSERVACIONES' },
+      { denominacion: 'M-12', patente: 'AJ987UV', tipo: 'Ambulancia', marca: 'Mercedes-Benz', modelo: 'Sprinter' },
+      { denominacion: 'M-13', patente: 'AK135WX', tipo: 'Ambulancia', marca: 'Iveco', modelo: 'Daily', estado: 'MANTENIMIENTO' },
+      { denominacion: 'M-14', patente: 'AL246YZ', tipo: 'Transporte de personal', marca: 'Toyota', modelo: 'Hilux', estado: 'FUERA_SERVICIO' },
+      { denominacion: 'M-15', patente: 'AM579BC', tipo: 'Van', marca: 'Renault', modelo: 'Master' },
+      { denominacion: 'M-16', patente: 'A123BCD', tipo: 'Moto', marca: 'Honda', modelo: 'XR 250' },
     ], typeIds, brandIds, modelIds);
   }
 
@@ -259,6 +291,7 @@ export class SeedService implements OnApplicationBootstrap {
       tipo: string;
       marca: string;
       modelo: string;
+      estado?: ActiveVehicleStatus;
     }[],
     typeIds: Record<string, string>,
     brandIds: Record<string, string>,
@@ -286,7 +319,7 @@ export class SeedService implements OnApplicationBootstrap {
         {
           denominacion: v.denominacion,
           patente: v.patente,
-          estado: 'OPERATIVO',
+          estado: v.estado ?? 'OPERATIVO',
           tipo_id: tipoId,
           marca_id: marcaId,
           modelo_id: modeloId,
@@ -299,7 +332,7 @@ export class SeedService implements OnApplicationBootstrap {
         );
         continue;
       }
-      this.logger.log(`Móvil operativo creado: ${v.denominacion} (${v.patente})`);
+      this.logger.log(`Móvil creado: ${v.denominacion} (${v.patente})`);
     }
   }
 
@@ -309,7 +342,7 @@ export class SeedService implements OnApplicationBootstrap {
       { nombre: 'AUTOMOTORES', descripcion: 'Alta, baja y modificación de móviles.' },
       // Corregí el texto corrupto de esta descripción
       { nombre: 'ADMINISTRATIVO', descripcion: 'Todas las capacidades de COMUN + acceso al módulo de constancias.' },
-      { nombre: 'ADMIN', descripcion: 'Gestión de usuarios y roles.' },
+      { nombre: 'ADMIN', descripcion: 'Control total: gestión de usuarios, roles y todos los módulos.' },
     ];
 
     for (const rol of roles) {

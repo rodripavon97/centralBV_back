@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -13,6 +12,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../common/guards/roles.guard.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
+import { parseIdPipe } from '../common/pipes/parse-id.pipe.js';
 import { FleetService } from './fleet.service.js';
 import { CreateEmergencyVehicleDto } from './dtos/create-emergency-vehicle.dto.js';
 import { UpdateEmergencyVehicleDto } from './dtos/update-emergency-vehicle.dto.js';
@@ -40,10 +40,17 @@ export class FleetController {
     return this.fleetService.findAll(query);
   }
 
+  /** Count active vehicles by status (dashboard counters). Declared before `:id`. */
+  @Get('resumen')
+  @ApiOperation({ summary: 'Count active vehicles by status' })
+  async summary() {
+    return this.fleetService.summary();
+  }
+
   /** Get a single vehicle by id (includes written-off). */
   @Get(':id')
   @ApiOperation({ summary: 'Get emergency vehicle detail' })
-  async getById(@Param('id', ParseUUIDPipe) id: string) {
+  async getById(@Param('id', parseIdPipe()) id: string) {
     return this.fleetService.findById(id);
   }
 
@@ -60,7 +67,7 @@ export class FleetController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update general vehicle data' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', parseIdPipe()) id: string,
     @Body() dto: UpdateEmergencyVehicleDto,
   ) {
     return this.fleetService.update(id, dto);
@@ -71,7 +78,7 @@ export class FleetController {
   @Patch(':id/baja')
   @ApiOperation({ summary: 'Write off a vehicle permanently (ADMIN)' })
   async writeOff(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', parseIdPipe()) id: string,
     @Body() dto: WriteOffEmergencyVehicleDto,
   ) {
     return this.fleetService.writeOff(id, dto);

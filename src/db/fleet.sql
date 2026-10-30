@@ -246,3 +246,18 @@ JOIN public.marcas_vehiculo m ON m.id = v.marca_id
 JOIN public.modelos_vehiculo mo ON mo.id = v.modelo_id;
 
 COMMENT ON VIEW public.vehiculos_emergencia_listado IS 'Vehículos de emergencia con datos de tipo, marca y modelo';
+
+-- ------------------------------------------------------------
+-- Seguridad: solo el backend accede, con la service role (que no pasa por
+-- RLS). Sin políticas, anon y authenticated no pueden leer ni escribir.
+-- ------------------------------------------------------------
+ALTER TABLE public.tipos_vehiculo       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.marcas_vehiculo      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.modelos_vehiculo     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vehiculos_emergencia ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON public.tipos_vehiculo               FROM anon, authenticated;
+REVOKE ALL ON public.marcas_vehiculo              FROM anon, authenticated;
+REVOKE ALL ON public.modelos_vehiculo             FROM anon, authenticated;
+REVOKE ALL ON public.vehiculos_emergencia         FROM anon, authenticated;
+REVOKE ALL ON public.vehiculos_emergencia_listado FROM anon, authenticated;

@@ -15,6 +15,7 @@ describe('FleetController', () => {
   let service: {
     findAll: ReturnType<typeof vi.fn>;
     findById: ReturnType<typeof vi.fn>;
+    summary: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
     writeOff: ReturnType<typeof vi.fn>;
@@ -24,6 +25,7 @@ describe('FleetController', () => {
     service = {
       findAll: vi.fn(),
       findById: vi.fn(),
+      summary: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       writeOff: vi.fn(),
@@ -62,6 +64,12 @@ describe('FleetController', () => {
     expect(service.update).toHaveBeenCalledWith(ID, dto);
   });
 
+  it('summary delegates to summary', async () => {
+    service.summary.mockResolvedValue({ total: 0 });
+    await controller.summary();
+    expect(service.summary).toHaveBeenCalled();
+  });
+
   it('writeOff delegates to writeOff', async () => {
     const dto = new WriteOffEmergencyVehicleDto();
     service.writeOff.mockResolvedValue({ id: ID });
@@ -80,8 +88,9 @@ describe('FleetController · roles', () => {
     expect(rolesOf('update')).toEqual(['AUTOMOTORES']);
   });
 
-  it('listar y ver detalle no piden rol', () => {
+  it('listar, resumen y ver detalle no piden rol', () => {
     expect(rolesOf('list')).toBeUndefined();
+    expect(rolesOf('summary')).toBeUndefined();
     expect(rolesOf('getById')).toBeUndefined();
   });
 });

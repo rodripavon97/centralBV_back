@@ -69,6 +69,7 @@ describe('FleetService', () => {
     existsByModel: ReturnType<typeof vi.fn>;
     findIdByPatente: ReturnType<typeof vi.fn>;
     findActiveIdByDenominationKey: ReturnType<typeof vi.fn>;
+    countByStatus: ReturnType<typeof vi.fn>;
   };
   let catalog: {
     findTypes: ReturnType<typeof vi.fn>;
@@ -88,9 +89,12 @@ describe('FleetService', () => {
       existsByModel: vi.fn(),
       findIdByPatente: vi.fn().mockResolvedValue(null),
       findActiveIdByDenominationKey: vi.fn().mockResolvedValue(null),
+      countByStatus: vi.fn(),
     };
     catalog = {
-      findTypes: vi.fn().mockResolvedValue([{ id: TIPO_ID, valor: 'Ambulancia' }]),
+      findTypes: vi
+        .fn()
+        .mockResolvedValue([{ id: TIPO_ID, valor: 'Ambulancia' }]),
       findBrands: vi.fn().mockResolvedValue([{ id: MARCA_ID, valor: 'Ford' }]),
       findModels: vi
         .fn()
@@ -231,9 +235,9 @@ describe('FleetService', () => {
     });
 
     it('rechaza patente vacía después de normalizar o fuera de largo', async () => {
-      await expect(service.create(createDto({ patente: ' - . ' }))).rejects.toThrow(
-        'La patente es obligatoria',
-      );
+      await expect(
+        service.create(createDto({ patente: ' - . ' })),
+      ).rejects.toThrow('La patente es obligatoria');
       await expect(
         service.create(createDto({ patente: 'A'.repeat(13) })),
       ).rejects.toThrow('La patente debe tener entre 2 y 12 letras o números');
@@ -348,6 +352,22 @@ describe('FleetService', () => {
         ConflictException,
       );
       expect(vehicles.markAsWrittenOff).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('summary', () => {
+    it('delega en el repositorio', async () => {
+      const resumen = {
+        total: 3,
+        porEstado: {
+          OPERATIVO: 2,
+          MANTENIMIENTO: 1,
+          OBSERVACIONES: 0,
+          FUERA_SERVICIO: 0,
+        },
+      };
+      vehicles.countByStatus.mockResolvedValue(resumen);
+      await expect(service.summary()).resolves.toEqual(resumen);
     });
   });
 });
