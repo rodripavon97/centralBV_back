@@ -10,6 +10,7 @@ import type {
   EmergencyVehicleRepository,
 } from '../domain/emergency-vehicle.repository.js';
 import { normalizeLicensePlate } from '../domain/license-plate.js';
+import { denominationKey } from '../domain/denomination.js';
 import type { EmergencyVehicle } from '../domain/emergency-vehicle.entity.js';
 import {
   ACTIVE_VEHICLE_STATUSES,
@@ -39,14 +40,17 @@ const LIST_SELECT =
 /**
  * Builds the PostgREST `or` filter for search by denomination or plate.
  * Plates are stored canonical ("AB123CD"), so the plate term is normalized:
- * "ab 123" finds "AB123CD". Values are quoted so commas/parentheses do not
- * break syntax.
+ * "ab 123" finds "AB123CD". The denomination is also searched by its key
+ * without separators (`denominacion_clave`), so "m1" finds "M-1" (US06).
+ * Values are quoted so commas/parentheses do not break syntax.
  */
 export function buildVehicleSearchFilter(busqueda: string): string | null {
   const q = busqueda.replace(/["\\%*]/g, '').trim();
   if (!q) return null;
   const plate = normalizeLicensePlate(q);
+  const key = denominationKey(q);
   const filters = [`denominacion.ilike."%${q}%"`];
+  if (key) filters.push(`denominacion_clave.ilike."%${key}%"`);
   if (plate) filters.push(`patente.ilike."%${plate}%"`);
   return filters.join(',');
 }
