@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
 import { MailBuilder } from './builders/mail.builder.js';
 import { WelcomeEmailBuilder } from './builders/welcome-email.builder.js';
+import { buildRecoveryEmailHtml } from './templates/welcome-email.template.js';
 
 @Injectable()
 export class MailService {
@@ -25,5 +26,15 @@ export class MailService {
 
   async sendWelcomeEmail(to: string, nombre: string, password: string) {
     await this.send(new WelcomeEmailBuilder({ to, nombre, password }));
+  }
+
+  sendRecoveryEmail(to: string, nombre: string, recoveryLink: string): void {
+    const html = buildRecoveryEmailHtml({ nombre, recoveryLink });
+
+    this.mailerService.sendMail({
+      to,
+      subject: 'Recuperación de contraseña - CentralBV',
+      html,
+    }).catch((error) => this.logger.error(`❌ Error enviando recuperación a ${to}: ${error.message}`));
   }
 }
