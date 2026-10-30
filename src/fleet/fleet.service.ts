@@ -16,6 +16,7 @@ import {
   type VehicleCatalogRepository,
 } from './domain/vehicle-catalog.repository.js';
 import type { EmergencyVehicle } from './domain/emergency-vehicle.entity.js';
+import type { FleetSummary } from './domain/emergency-vehicle.enums.js';
 import {
   LICENSE_PLATE_MAX_LENGTH,
   LICENSE_PLATE_MIN_LENGTH,
@@ -33,12 +34,9 @@ import { ListEmergencyVehiclesDto } from './dtos/list-emergency-vehicles.dto.js'
 import { WriteOffEmergencyVehicleDto } from './dtos/write-off-emergency-vehicle.dto.js';
 
 const NOT_FOUND = 'El vehículo de emergencia no existe';
-const ALREADY_WRITTEN_OFF =
-  'El vehículo ya está dado de baja definitiva';
-const INVALID_CATALOG =
-  'El tipo, marca o modelo no es válido o no está activo';
-const MODEL_BRAND_MISMATCH =
-  'El modelo no pertenece a la marca indicada';
+const ALREADY_WRITTEN_OFF = 'El vehículo ya está dado de baja definitiva';
+const INVALID_CATALOG = 'El tipo, marca o modelo no es válido o no está activo';
+const MODEL_BRAND_MISMATCH = 'El modelo no pertenece a la marca indicada';
 
 /** Códigos que el front usa para ubicar el error o pedir confirmación. */
 export const FLEET_ERROR_CODES = {
@@ -83,6 +81,11 @@ export class FleetService {
       porPagina,
     });
     return buildPaginatedResponse(items, total, pagina, porPagina);
+  }
+
+  /** Active vehicles by status, for the dashboard counters (US05). */
+  async summary(): Promise<FleetSummary> {
+    return this.vehicles.countByStatus();
   }
 
   /** Returns the vehicle or throws if it does not exist. */

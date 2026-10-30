@@ -217,12 +217,40 @@ describe('SupabaseEmergencyVehicleRepository', () => {
   });
 
   it('existsByType/Brand/Model consultan la tabla', async () => {
-    from.mockReturnValue(createQueryMock({ data: [{ id: VEHICLE_ID }], error: null }));
+    from.mockReturnValue(
+      createQueryMock({ data: [{ id: VEHICLE_ID }], error: null }),
+    );
     await expect(repo.existsByType(TIPO_ID)).resolves.toBe(true);
     from.mockReturnValue(createQueryMock({ data: [], error: null }));
     await expect(repo.existsByBrand(MARCA_ID)).resolves.toBe(false);
-    from.mockReturnValue(createQueryMock({ data: [{ id: VEHICLE_ID }], error: null }));
+    from.mockReturnValue(
+      createQueryMock({ data: [{ id: VEHICLE_ID }], error: null }),
+    );
     await expect(repo.existsByModel(MODELO_ID)).resolves.toBe(true);
+    expect(from).toHaveBeenCalledWith('vehiculos_emergencia');
+  });
+
+  it('countByStatus cuenta cada estado activo', async () => {
+    const counts: Record<string, number> = {
+      OPERATIVO: 4,
+      MANTENIMIENTO: 2,
+      OBSERVACIONES: 1,
+      FUERA_SERVICIO: 0,
+    };
+    from.mockImplementation(() => {
+      const query = createQueryMock(undefined) as unknown as {
+        eq: ReturnType<typeof vi.fn>;
+      };
+      query.eq.mockImplementation((_col: string, estado: string) =>
+        createQueryMock({ count: counts[estado], error: null }),
+      );
+      return query;
+    });
+
+    await expect(repo.countByStatus()).resolves.toEqual({
+      total: 7,
+      porEstado: counts,
+    });
     expect(from).toHaveBeenCalledWith('vehiculos_emergencia');
   });
 

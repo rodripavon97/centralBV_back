@@ -17,3 +17,9 @@ export const ACTIVE_VEHICLE_STATUSES = [
 ] as const;
 
 export type ActiveVehicleStatus = (typeof ACTIVE_VEHICLE_STATUSES)[number];
+
+/** Cantidad de móviles activos por estado (para el dashboard de flota). */
+export interface FleetSummary {
+  total: number;
+  porEstado: Record<ActiveVehicleStatus, number>;
+}
