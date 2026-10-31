@@ -58,17 +58,26 @@ const mappedVehicle = {
 };
 
 describe('buildVehicleSearchFilter', () => {
-  it('busca por denominación y patente', () => {
+  it('busca por denominación, clave de denominación y patente', () => {
     expect(buildVehicleSearchFilter('AB123')).toBe(
-      'denominacion.ilike."%AB123%",patente.ilike."%AB123%"',
+      'denominacion.ilike."%AB123%",denominacion_clave.ilike."%AB123%",patente.ilike."%AB123%"',
     );
   });
 
   it('normaliza el término de patente (las patentes se guardan canónicas)', () => {
     expect(buildVehicleSearchFilter('ab 123')).toBe(
-      'denominacion.ilike."%ab 123%",patente.ilike."%AB123%"',
+      'denominacion.ilike."%ab 123%",denominacion_clave.ilike."%AB123%",patente.ilike."%AB123%"',
     );
   });
+
+  it.each(['m1', 'M 1', 'm-1', 'M.1'])(
+    '"%s" busca la clave M1, así encuentra M-1',
+    (busqueda) => {
+      expect(buildVehicleSearchFilter(busqueda)).toContain(
+        'denominacion_clave.ilike."%M1%"',
+      );
+    },
+  );
 
   it('no filtra por patente si el término no tiene letras ni números', () => {
     expect(buildVehicleSearchFilter('-')).toBe('denominacion.ilike."%-%"');

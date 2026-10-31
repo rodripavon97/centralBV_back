@@ -232,6 +232,7 @@ SELECT
   v.estado,
   v.patente,
   v.denominacion,
+  v.denominacion_clave,
   v.motivo_baja,
   v.creado_en,
   v.tipo_id,
