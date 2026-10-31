@@ -36,6 +36,12 @@ pnpm run build
 pnpm run start:prod
 ```
 
+Run the test suite with coverage:
+
+```bash
+pnpm run test:cov
+```
+
 The server listens on `http://localhost:3000` by default (or the port set in `PORT`).
 
 ## Password recovery

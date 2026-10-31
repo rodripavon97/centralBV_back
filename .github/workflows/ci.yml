@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - develop
+      - 'fix/*'
       - 'feat/*'
       - 'feat/**'
   pull_request:
@@ -20,6 +21,8 @@ jobs:
   ci:
     name: Lint · Test · Build
     runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
     steps:
       - name: Checkout code
@@ -42,12 +45,15 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
-      - name: Run tests
-        run: pnpm run test
+      - name: Run tests with coverage
+        run: pnpm run test:cov
 
       - name: Build
         run: pnpm run build
+
       - name: Upload coverage reports to Codecov
+        if: ${{ env.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@v5
         with:
-          token: '${{ secrets.CODECOV_TOKEN }}'
+          token: ${{ env.CODECOV_TOKEN }}
+          fail_ci_if_error: true
