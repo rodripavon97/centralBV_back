@@ -1,5 +1,6 @@
 # CentralBV Backend
-![Coverage](./coverage/badge-statements.svg)
+[![Build NestJS APP](https://github.com/rodripavon97/centralBV_back/actions/workflows/ci.yml/badge.svg)](https://github.com/rodripavon97/centralBV_back/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/rodripavon97/centralBV_back/graph/badge.svg?token=LBHU24T6H1)](https://codecov.io/gh/rodripavon97/centralBV_back)
 
 
 
@@ -33,6 +34,12 @@ pnpm run start:dev
 # production
 pnpm run build
 pnpm run start:prod
+```
+
+Run the test suite with coverage:
+
+```bash
+pnpm run test:cov
 ```
 
 The server listens on `http://localhost:3000` by default (or the port set in `PORT`).
