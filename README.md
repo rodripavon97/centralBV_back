@@ -1,5 +1,5 @@
 # CentralBV Backend
-[![Build NestJS APP](https://github.com/rodripavon97/centralBV_back/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rodripavon97/centralBV_back/actions/workflows/ci.yml)
+[![Build NestJS APP](https://github.com/rodripavon97/centralBV_back/actions/workflows/ci.yml/badge.svg)](https://github.com/rodripavon97/centralBV_back/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/rodripavon97/centralBV_back/graph/badge.svg?token=LBHU24T6H1)](https://codecov.io/github/rodripavon97/centralBV_back)
 
 
