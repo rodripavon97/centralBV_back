@@ -177,7 +177,14 @@ export class AuthService {
 
     const adminDb = this.supabase.getAdminClient();
 
-    // 4. Revocar todas las sesiones activas del usuario (incluida la del enlace).
+    // 4. Rechazar el reuso de la contraseña actual.
+    // La API de administración de Supabase (updateUserById) no valida que la
+    // contraseña nueva sea distinta de la anterior, por eso comprobamos
+    // intentando iniciar sesión con la contraseña propuesta: si el login
+    // funciona, es porque es la misma que ya tenía el usuario.
+    await this.assertPasswordIsNew(user.email, dto.newPassword);
+
+    // 5. Revocar todas las sesiones activas del usuario (incluida la del enlace).
     // Usamos el token de recuperación como JWT del usuario; debe hacerse antes
     // del update porque cambiar la contraseña invalida esa sesión.
     const { error: signOutError } = await adminDb.auth.admin.signOut(dto.token, 'global');
@@ -189,26 +196,76 @@ export class AuthService {
       );
     }
 
-    // 5. Actualizar la contraseña en Supabase Auth
+    // 6. Actualizar la contraseña en Supabase Auth
     const { error: updateError } = await adminDb.auth.admin.updateUserById(user.id, {
       password: dto.newPassword,
     });
 
-    // 6. Manejo de errores
+    // 7. Manejo de errores
     if (updateError) {
       this.logger.error(`Error actualizando contraseña: ${updateError.message}`);
 
-      if (updateError.message.includes('different from the old password')) {
-        throw new BadRequestException('La contraseña nueva no puede ser igual a la anterior.');
+      if (this.isSamePasswordError(updateError)) {
+        throw new BadRequestException(
+          AuthService.SAME_PASSWORD_MESSAGE,
+        );
       }
 
       throw new BadRequestException('No se pudo actualizar la contraseña.');
     }
 
-    // 7. Retorno exitoso
+    // 8. Retorno exitoso
     return {
       message: 'Contraseña actualizada correctamente. Ya puedes iniciar sesión con tu nueva clave.',
     };
+  }
+
+  private static readonly SAME_PASSWORD_MESSAGE =
+    'La contraseña nueva no puede ser igual a la anterior. Por favor, ingresa otra contraseña.';
+
+  private isSamePasswordError(error: { code?: string; message?: string }): boolean {
+    const message = (error.message ?? '').toLowerCase();
+    return (
+      error.code === 'same_password' ||
+      message.includes('different from the old password') ||
+      message.includes('same password')
+    );
+  }
+
+  /**
+   * Comprueba que la contraseña propuesta no sea la actual.
+   *
+   * Supabase solo valida el reuso en el endpoint de autoedición del usuario,
+   * no en el de administración, que es el que usamos para el reset. Para
+   * detectarlo iniciamos sesión con la contraseña propuesta: si funciona, la
+   * contraseña es la misma. En ese caso cerramos la sesión recién creada.
+   */
+  private async assertPasswordIsNew(email: string | undefined, password: string): Promise<void> {
+    if (!email) return;
+
+    const { data, error } = await this.supabase
+      .getClient()
+      .auth.signInWithPassword({ email, password });
+
+    // Si no se pudo iniciar sesión, la contraseña propuesta es distinta a la
+    // actual (o no se pudo comprobar); el update de Supabase decidirá.
+    if (error || !data.user) return;
+
+    // La contraseña coincide con la actual: revocamos solo la sesión de prueba
+    // para no cerrar las sesiones legítimas del usuario.
+    if (data.session?.access_token) {
+      const { error: probeSignOutError } = await this.supabase
+        .getAdminClient()
+        .auth.admin.signOut(data.session.access_token, 'local');
+
+      if (probeSignOutError) {
+        this.logger.warn(
+          `No se pudo cerrar la sesión de verificación de ${email}: ${probeSignOutError.message}`,
+        );
+      }
+    }
+
+    throw new BadRequestException(AuthService.SAME_PASSWORD_MESSAGE);
   }
 
   /**

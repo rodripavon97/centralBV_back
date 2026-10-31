@@ -36,7 +36,12 @@ describe('AuthService', () => {
 
   beforeEach(async () => {
     findByEmail = vi.fn();
-    signInWithPassword = vi.fn();
+    // Por defecto simulamos que la contraseña propuesta NO coincide con la
+    // actual (login falla), para que el reset continúe con normalidad.
+    signInWithPassword = vi.fn().mockResolvedValue({
+      data: { user: null, session: null },
+      error: { message: 'Invalid login credentials' },
+    });
     getUser = vi.fn();
     updateUserById = vi.fn();
     signOut = vi.fn().mockResolvedValue({ error: null });
@@ -341,7 +346,43 @@ describe('AuthService', () => {
       expect(updateUserById).not.toHaveBeenCalled();
     });
 
-    it('devuelve un error si la nueva contraseña es igual a la anterior', async () => {
+    it('rechaza la nueva contraseña cuando es igual a la actual', async () => {
+      getUser.mockResolvedValue({
+        data: { user: { id: 'user-1', email: 'admin@centralbv.com' } },
+        error: null,
+      });
+      // El login con la contraseña propuesta funciona => es la misma que ya tenía.
+      signInWithPassword.mockResolvedValue({
+        data: {
+          user: { id: 'user-1' },
+          session: { access_token: 'probe-session-token' },
+        },
+        error: null,
+      });
+
+      await expect(
+        authService.resetPassword({
+          token: validRecoveryToken,
+          newPassword,
+          confirmPassword: newPassword,
+        }),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'La contraseña nueva no puede ser igual a la anterior. Por favor, ingresa otra contraseña.',
+        ),
+      );
+
+      expect(signInWithPassword).toHaveBeenCalledWith({
+        email: 'admin@centralbv.com',
+        password: newPassword,
+      });
+      // Solo se revoca la sesión de la comprobación, no las del usuario.
+      expect(signOut).toHaveBeenCalledWith('probe-session-token', 'local');
+      expect(signOut).not.toHaveBeenCalledWith(validRecoveryToken, 'global');
+      expect(updateUserById).not.toHaveBeenCalled();
+    });
+
+    it('devuelve un error si la nueva contraseña es igual a la anterior (fallback de Supabase)', async () => {
       getUser.mockResolvedValue({
         data: { user: { id: 'user-1' } },
         error: null,
@@ -359,7 +400,7 @@ describe('AuthService', () => {
         }),
       ).rejects.toThrow(
         new BadRequestException(
-          'La contraseña nueva no puede ser igual a la anterior.',
+          'La contraseña nueva no puede ser igual a la anterior. Por favor, ingresa otra contraseña.',
         ),
       );
     });
