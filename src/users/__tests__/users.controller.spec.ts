@@ -8,15 +8,32 @@ describe('UsersController', () => {
   let createUserFn: ReturnType<typeof vi.fn>;
   let findAllFn: ReturnType<typeof vi.fn>;
   let findOneFn: ReturnType<typeof vi.fn>;
+  let updateUserFn: ReturnType<typeof vi.fn>;
   let resendWelcomeEmailFn: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     createUserFn = vi.fn().mockResolvedValue({
-      message: 'Usuario creado exitosamente. Se ha enviado un correo con las credenciales.',
+      message:
+        'Usuario creado exitosamente. Se ha enviado un correo con las credenciales.',
       userId: 'user-new',
     });
-    findAllFn = vi.fn().mockResolvedValue({ data: [], total: 0, pagina: 1, porPagina: 10 });
-    findOneFn = vi.fn().mockResolvedValue({ id: 'u1', nombre: 'Ana' });
+    findAllFn = vi
+      .fn()
+      .mockResolvedValue({ data: [], total: 0, pagina: 1, porPagina: 10 });
+    findOneFn = vi.fn().mockResolvedValue({
+      id: 'u1',
+      email: 'ana@centralbv.com',
+      nombre: 'Ana',
+      apellido: 'Lopez',
+      roles: ['COMUN'],
+    });
+    updateUserFn = vi.fn().mockResolvedValue({
+      id: 'u1',
+      email: 'ana@centralbv.com',
+      nombre: 'Ana María',
+      apellido: 'Lopez',
+      roles: ['COMUN'],
+    });
     resendWelcomeEmailFn = vi.fn().mockResolvedValue({
       message: 'Correo de bienvenida reenviado exitosamente.',
     });
@@ -30,6 +47,7 @@ describe('UsersController', () => {
             createUser: createUserFn,
             findAll: findAllFn,
             findOne: findOneFn,
+            updateUser: updateUserFn,
             resendWelcomeEmail: resendWelcomeEmailFn,
           },
         },
@@ -64,6 +82,32 @@ describe('UsersController', () => {
     const id = '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b';
     await controller.findOne(id);
     expect(findOneFn).toHaveBeenCalledWith(id);
+  });
+
+  it('update delega a usersService.updateUser y devuelve el detalle', async () => {
+    const id = '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b';
+    const dto = { nombre: 'Ana María' } as any;
+
+    const result = await controller.update(id, dto);
+
+    expect(updateUserFn).toHaveBeenCalledWith(id, dto);
+    expect(result).toMatchObject({
+      id: 'u1',
+      nombre: 'Ana María',
+      roles: ['COMUN'],
+    });
+  });
+
+  it('findOne devuelve el detalle del usuario', async () => {
+    const id = '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b';
+
+    const result = await controller.findOne(id);
+
+    expect(result).toMatchObject({
+      id: 'u1',
+      email: 'ana@centralbv.com',
+      roles: ['COMUN'],
+    });
   });
 
   it('resendWelcomeEmail delega a usersService.resendWelcomeEmail', async () => {

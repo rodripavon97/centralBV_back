@@ -105,6 +105,27 @@ describe('SupabaseUserRepository', () => {
     );
   });
 
+  it('update actualiza y mapea a User', async () => {
+    from.mockReturnValue(
+      mockTerminal({ data: { ...row, nombre: 'Ana María' }, error: null }),
+    );
+
+    const user = await repo.update('u1', { nombre: 'Ana María' });
+
+    expect(user).toBeInstanceOf(User);
+    expect(user.nombre).toBe('Ana María');
+  });
+
+  it('update propaga errores de Supabase', async () => {
+    from.mockReturnValue(
+      mockTerminal({ data: null, error: { message: 'update failed' } }),
+    );
+
+    await expect(repo.update('u1', { nombre: 'X' })).rejects.toThrow(
+      'update failed',
+    );
+  });
+
   it('findByEmail retorna User o null', async () => {
     from.mockReturnValue(mockTerminal({ data: row, error: null }));
     await expect(repo.findByEmail(row.email)).resolves.toEqual(

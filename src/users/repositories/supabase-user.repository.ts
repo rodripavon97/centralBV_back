@@ -27,6 +27,18 @@ export class SupabaseUserRepository implements UserRepository {
     return this.toUser(newUser as SupabaseUserResponse);
   }
 
+  async update(id: string, data: Partial<User>): Promise<User> {
+    const { data: updatedUser, error } = await this.db
+      .from('usuarios')
+      .update(data)
+      .eq('id', id)
+      .select(`*, usuario_rol ( roles ( nombre ) )`)
+      .single();
+
+    if (error) throwMappedSupabaseError(error);
+    return this.toUser(updatedUser as SupabaseUserResponse);
+  }
+
   async findByEmail(email: string): Promise<User | null> {
     const { data, error } = await this.db
       .from('usuarios')
@@ -49,11 +61,15 @@ export class SupabaseUserRepository implements UserRepository {
     return data ? this.toUser(data as SupabaseUserResponse) : null;
   }
 
-  async findAll(params: FindAllUsersParams): Promise<{ items: User[]; total: number }> {
+  async findAll(
+    params: FindAllUsersParams,
+  ): Promise<{ items: User[]; total: number }> {
     return this.listFromTable(params);
   }
 
-  private async listFromTable(params: FindAllUsersParams): Promise<{ items: User[]; total: number }> {
+  private async listFromTable(
+    params: FindAllUsersParams,
+  ): Promise<{ items: User[]; total: number }> {
     const { busqueda, rol, activo, orden, pagina, porPagina } = params;
 
     // Sin filtro de rol usamos LEFT JOIN para que también aparezcan los
@@ -64,14 +80,19 @@ export class SupabaseUserRepository implements UserRepository {
       : 'usuario_rol ( roles ( nombre ) )';
 
     // Función interna para reutilizar la lógica de filtros (igual que el `query` en constancias)
-    const buildQuery = (columns: string, selectOptions?: { count: 'exact'; head?: boolean }) => {
+    const buildQuery = (
+      columns: string,
+      selectOptions?: { count: 'exact'; head?: boolean },
+    ) => {
       let q = this.db.from('usuarios').select(columns, selectOptions);
-      
+
       // Excluir al usuario admin
-      q = q.neq('email', 'admin@centralbv.com'); 
+      q = q.neq('email', 'admin@centralbv.com');
 
       if (busqueda) {
-        q = q.or(`nombre.ilike.%${busqueda}%,apellido.ilike.%${busqueda}%,email.ilike.%${busqueda}%`);
+        q = q.or(
+          `nombre.ilike.%${busqueda}%,apellido.ilike.%${busqueda}%,email.ilike.%${busqueda}%`,
+        );
       }
       if (rol) {
         q = q.eq('usuario_rol.roles.nombre', rol.toUpperCase());
@@ -84,11 +105,14 @@ export class SupabaseUserRepository implements UserRepository {
     };
 
     // 3. Primero contamos (para no pedir rangos fuera de la última página)
-    const { count, error: countError } = await buildQuery(`id, ${rolesRelation}`, {
-      count: 'exact',
-      head: true,
-    });
-    
+    const { count, error: countError } = await buildQuery(
+      `id, ${rolesRelation}`,
+      {
+        count: 'exact',
+        head: true,
+      },
+    );
+
     if (countError) throwMappedSupabaseError(countError);
     const total = count ?? 0;
     if (total === 0) return { items: [], total };
@@ -98,7 +122,7 @@ export class SupabaseUserRepository implements UserRepository {
 
     // 5. Consultamos los datos reales con paginación y orden
     let dataQuery = buildQuery(`*, ${rolesRelation}`);
-    
+
     if (orden) {
       const [columna, direccion] = orden.split('.');
       dataQuery = dataQuery.order(columna, { ascending: direccion === 'asc' });
@@ -117,9 +141,10 @@ export class SupabaseUserRepository implements UserRepository {
 
   /** Mapea la fila de Supabase a la Entidad de Dominio User */
   private toUser(row: SupabaseUserResponse): User {
-    const roles = row.usuario_rol
-      ?.map((ur) => ur.roles?.nombre)
-      .filter((nombre): nombre is string => !!nombre) || [];
+    const roles =
+      row.usuario_rol
+        ?.map((ur) => ur.roles?.nombre)
+        .filter((nombre): nombre is string => !!nombre) || [];
 
     return new User(
       row.id,

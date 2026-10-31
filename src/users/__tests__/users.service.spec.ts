@@ -12,6 +12,7 @@ import { SupabaseService } from '../../supabase/supabase.service.js';
 import { MailService } from '../../mail/mail.service.js';
 import { UsersService } from '../users.service.js';
 import { CreateUserDto } from '../dtos/create-user.dto.js';
+import { EditUserDto } from '../dtos/edit-user.dto.js';
 import { EncryptionService } from '../../common/security/encryption.service.js';
 
 describe('UsersService', () => {
@@ -20,6 +21,7 @@ describe('UsersService', () => {
   let findById: ReturnType<typeof vi.fn>;
   let findAll: ReturnType<typeof vi.fn>;
   let create: ReturnType<typeof vi.fn>;
+  let update: ReturnType<typeof vi.fn>;
   let createUser: ReturnType<typeof vi.fn>;
   let updateUserById: ReturnType<typeof vi.fn>;
   let from: ReturnType<typeof vi.fn>;
@@ -58,6 +60,7 @@ describe('UsersService', () => {
     findById = vi.fn();
     findAll = vi.fn();
     create = vi.fn().mockResolvedValue(undefined);
+    update = vi.fn().mockResolvedValue(undefined);
     createUser = vi.fn();
     updateUserById = vi.fn().mockResolvedValue({ data: null, error: null });
     from = vi.fn();
@@ -70,7 +73,7 @@ describe('UsersService', () => {
         UsersService,
         {
           provide: USER_REPOSITORY,
-          useValue: { findByEmail, findById, create, findAll },
+          useValue: { findByEmail, findById, create, update, findAll },
         },
         {
           provide: SupabaseService,
@@ -152,7 +155,8 @@ describe('UsersService', () => {
       const result = await service.createUser(dto);
 
       expect(result).toEqual({
-        message: 'Usuario creado exitosamente. Se ha enviado un correo con las credenciales.',
+        message:
+          'Usuario creado exitosamente. Se ha enviado un correo con las credenciales.',
         userId: 'user-new',
       });
     });
@@ -190,9 +194,9 @@ describe('UsersService', () => {
         error: null,
       });
 
-      const insertSpy = vi.fn().mockReturnValue(
-        mockChain({ data: null, error: null }),
-      );
+      const insertSpy = vi
+        .fn()
+        .mockReturnValue(mockChain({ data: null, error: null }));
 
       from.mockImplementation((table: string) => {
         if (table === 'roles') {
@@ -273,7 +277,205 @@ describe('UsersService', () => {
 
     it('lanza NotFoundException si el usuario no existe', async () => {
       findById.mockResolvedValue(null);
-      await expect(service.findOne('missing')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  // ─── EDICIÓN DE USUARIO ───────────────────────────────────────
+
+  describe('updateUser', () => {
+    const current = new User(
+      'u1',
+      'ana@centralbv.com',
+      'Ana',
+      'Lopez',
+      true,
+      undefined,
+      ['COMUN'],
+    );
+
+    beforeEach(() => {
+      update.mockResolvedValue(current);
+    });
+
+    it('lanza NotFoundException si el usuario no existe', async () => {
+      findById.mockResolvedValue(null);
+
+      await expect(
+        service.updateUser('missing', EditUserDto.fromDto({ nombre: 'Ana' })),
+      ).rejects.toThrow(NotFoundException);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('actualiza solamente los campos enviados', async () => {
+      const updated = new User(
+        'u1',
+        'ana@centralbv.com',
+        'Ana María',
+        'Lopez',
+        true,
+        undefined,
+        ['COMUN'],
+      );
+      findById.mockResolvedValueOnce(current).mockResolvedValueOnce(updated);
+      update.mockResolvedValue(updated);
+
+      const result = await service.updateUser(
+        current.id,
+        EditUserDto.fromDto({ nombre: 'Ana María' }),
+      );
+
+      expect(update).toHaveBeenCalledWith(current.id, { nombre: 'Ana María' });
+      expect(result).toBe(updated);
+    });
+
+    it('no modifica la contraseña aunque venga en el payload', async () => {
+      findById.mockResolvedValueOnce(current).mockResolvedValueOnce(current);
+      const dto = EditUserDto.fromDto({
+        nombre: 'Ana',
+        password: 'Nueva123!',
+      } as unknown as Partial<EditUserDto>);
+
+      await service.updateUser(current.id, dto);
+
+      expect(encrypt).not.toHaveBeenCalled();
+      expect(updateUserById).not.toHaveBeenCalled();
+      expect(update).toHaveBeenCalledWith(current.id, { nombre: 'Ana' });
+      expect(update.mock.calls[0][1]).not.toHaveProperty('password');
+    });
+
+    it('sincroniza el email con Supabase Auth cuando cambia', async () => {
+      const updated = new User(
+        'u1',
+        'nueva@centralbv.com',
+        'Ana',
+        'Lopez',
+        true,
+        undefined,
+        ['COMUN'],
+      );
+      findById.mockResolvedValueOnce(current).mockResolvedValueOnce(updated);
+      findByEmail.mockResolvedValue(null);
+      updateUserById.mockResolvedValue({
+        data: { user: { id: 'u1' } },
+        error: null,
+      });
+      update.mockResolvedValue(updated);
+
+      const result = await service.updateUser(
+        current.id,
+        EditUserDto.fromDto({ email: 'nueva@centralbv.com' }),
+      );
+
+      expect(updateUserById).toHaveBeenCalledWith('u1', {
+        email: 'nueva@centralbv.com',
+        email_confirm: true,
+      });
+      expect(update).toHaveBeenCalledWith('u1', {
+        email: 'nueva@centralbv.com',
+      });
+      expect(result).toBe(updated);
+    });
+
+    it('no toca Supabase Auth si el email no cambia', async () => {
+      findById.mockResolvedValue(current);
+
+      await service.updateUser(
+        current.id,
+        EditUserDto.fromDto({ email: current.email }),
+      );
+
+      expect(findByEmail).not.toHaveBeenCalled();
+      expect(updateUserById).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('lanza ConflictException si el email pertenece a otro usuario', async () => {
+      findById.mockResolvedValue(current);
+      findByEmail.mockResolvedValue(
+        new User('u2', 'ocupado@centralbv.com', 'Otro', 'User', true),
+      );
+
+      await expect(
+        service.updateUser(
+          current.id,
+          EditUserDto.fromDto({ email: 'ocupado@centralbv.com' }),
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      expect(updateUserById).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('reemplaza el rol y aplica la herencia ADMINISTRATIVO → COMUN', async () => {
+      const updated = new User(
+        'u1',
+        current.email,
+        current.nombre,
+        current.apellido,
+        true,
+        undefined,
+        ['ADMINISTRATIVO', 'COMUN'],
+      );
+      findById.mockResolvedValueOnce(current).mockResolvedValueOnce(updated);
+
+      const insertSpy = vi
+        .fn()
+        .mockReturnValue(mockChain({ data: null, error: null }));
+      const deleteEq = vi
+        .fn()
+        .mockReturnValue(mockChain({ data: null, error: null }));
+
+      from.mockImplementation((table: string) => {
+        if (table === 'roles') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockImplementation((_col: string, val: string) =>
+                mockChain({
+                  data: { id: `role-${val.toLowerCase()}` },
+                  error: null,
+                }),
+              ),
+            }),
+          };
+        }
+        if (table === 'usuario_rol') {
+          return {
+            delete: vi.fn().mockReturnValue({ eq: deleteEq }),
+            insert: insertSpy,
+          };
+        }
+        return mockChain({ data: null, error: null });
+      });
+
+      const result = await service.updateUser(
+        current.id,
+        EditUserDto.fromDto({ roleName: 'administrativo' }),
+      );
+
+      expect(deleteEq).toHaveBeenCalledWith('usuario_id', current.id);
+      expect(insertSpy).toHaveBeenCalledWith([
+        { usuario_id: current.id, rol_id: 'role-administrativo' },
+        { usuario_id: current.id, rol_id: 'role-comun' },
+      ]);
+      expect(result).toBe(updated);
+    });
+
+    it('lanza NotFoundException si el rol nuevo no existe', async () => {
+      findById.mockResolvedValue(current);
+      from.mockImplementation(() =>
+        mockChain({ data: null, error: { message: 'not found' } }),
+      );
+
+      await expect(
+        service.updateUser(
+          current.id,
+          EditUserDto.fromDto({ roleName: 'inexistente' }),
+        ),
+      ).rejects.toThrow(NotFoundException);
+      expect(update).not.toHaveBeenCalled();
     });
   });
 
