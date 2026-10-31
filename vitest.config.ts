@@ -8,19 +8,5 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.spec.ts'],
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'text-summary', 'html', 'json-summary'],
-      include: ['src/**/*.ts'],
-      exclude: [
-        'src/**/*.spec.ts',
-        'src/**/*.module.ts',
-        'src/**/roles.modules.ts',
-        'src/main.ts',
-        'src/seed/**',
-        'src/**/*.enums.ts',
-        'src/**/domain/**/*.repository.ts',
-      ],
-    },
   },
 });
