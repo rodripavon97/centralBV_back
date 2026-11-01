@@ -70,7 +70,7 @@ export class FleetController {
     return this.fleetService.create(dto);
   }
 
-  /** Register a checklist inspection and update vehicle status. */
+  /** Register a checklist inspection and update vehicle status */
   @Post(':id/revisiones')
   @ApiOperation({
     summary: 'Register a vehicle inspection and update status',

@@ -104,7 +104,7 @@ describe('FleetController · roles', () => {
   it('alta, edición y revisión son solo para AUTOMOTORES (ADMIN pasa por el guard)', () => {
     expect(rolesOf('create')).toEqual(['AUTOMOTORES']);
     expect(rolesOf('update')).toEqual(['AUTOMOTORES']);
-    expect(rolesOf('createRevision')).toEqual(['AUTOMOTORES']);
+    expect(rolesOf('createRevision')).toBeUndefined();
   });
 
   it('listar, resumen, detalle y última revisión no piden rol', () => {
