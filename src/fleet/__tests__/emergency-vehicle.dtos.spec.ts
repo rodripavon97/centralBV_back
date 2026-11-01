@@ -8,7 +8,9 @@ import { WriteOffEmergencyVehicleDto } from '../dtos/write-off-emergency-vehicle
 import { CreateCatalogItemDto } from '../dtos/create-catalog-item.dto.js';
 import { UpdateCatalogItemDto } from '../dtos/update-catalog-item.dto.js';
 import { CreateCatalogModelDto } from '../dtos/create-catalog-model.dto.js';
+import { CreateRevisionDto } from '../dtos/create-revision.dto.js';
 import { ACTIVE_VEHICLE_STATUSES } from '../domain/emergency-vehicle.enums.js';
+import { REVISION_ITEM_KEYS } from '../domain/revision.enums.js';
 
 const TIPO_ID = '11111111-1111-4111-8111-111111111111';
 const MARCA_ID = '22222222-2222-4222-8222-222222222222';
@@ -229,5 +231,62 @@ describe('US04 · alta y edición de móviles', () => {
       estado: 'FUERA_SERVICIO',
     });
     expect(errors).toContain('estado');
+  });
+});
+
+const validRevisionBody = () => {
+  const items = Object.fromEntries(
+    REVISION_ITEM_KEYS.map((key) => [
+      key,
+      { estado: 'OK', comentario: null },
+    ]),
+  );
+  return { ...items, comentarioGeneral: null };
+};
+
+describe('CreateRevisionDto', () => {
+  it('acepta checklist completo todo OK', async () => {
+    const { errors } = await validateDto(CreateRevisionDto, validRevisionBody());
+    expect(errors).toEqual([]);
+  });
+
+  it('exige comentario cuando hay ADVERTENCIA', async () => {
+    const { errors } = await validateDto(CreateRevisionDto, {
+      ...validRevisionBody(),
+      frenos: { estado: 'ADVERTENCIA', comentario: null },
+    });
+    expect(errors).toContain('frenos.comentario');
+  });
+
+  it('acepta ADVERTENCIA con comentario', async () => {
+    const { errors } = await validateDto(CreateRevisionDto, {
+      ...validRevisionBody(),
+      frenos: { estado: 'ADVERTENCIA', comentario: '  pastillas  ' },
+      comentarioGeneral: '  rutina  ',
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it('rechaza estado de ítem inválido', async () => {
+    const { errors } = await validateDto(CreateRevisionDto, {
+      ...validRevisionBody(),
+      bateria: { estado: 'MAL', comentario: 'x' },
+    });
+    expect(errors).toContain('bateria.estado');
+  });
+
+  it('exige los 7 ítems', async () => {
+    const { errors } = await validateDto(CreateRevisionDto, {});
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        'nivelAceite',
+        'frenos',
+        'refrigerante',
+        'bateria',
+        'presionNeumaticos',
+        'lucesYBalizas',
+        'sirenaYComunicaciones',
+      ]),
+    );
   });
 });

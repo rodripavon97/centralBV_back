@@ -7,6 +7,7 @@ import { CreateEmergencyVehicleDto } from '../dtos/create-emergency-vehicle.dto.
 import { UpdateEmergencyVehicleDto } from '../dtos/update-emergency-vehicle.dto.js';
 import { ListEmergencyVehiclesDto } from '../dtos/list-emergency-vehicles.dto.js';
 import { WriteOffEmergencyVehicleDto } from '../dtos/write-off-emergency-vehicle.dto.js';
+import { CreateRevisionDto } from '../dtos/create-revision.dto.js';
 
 const ID = '44444444-4444-4444-8444-444444444444';
 
@@ -19,6 +20,8 @@ describe('FleetController', () => {
     create: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
     writeOff: ReturnType<typeof vi.fn>;
+    createRevision: ReturnType<typeof vi.fn>;
+    findLatestRevision: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -29,6 +32,8 @@ describe('FleetController', () => {
       create: vi.fn(),
       update: vi.fn(),
       writeOff: vi.fn(),
+      createRevision: vi.fn(),
+      findLatestRevision: vi.fn(),
     };
     const module: TestingModule = await Test.createTestingModule({
       controllers: [FleetController],
@@ -76,6 +81,19 @@ describe('FleetController', () => {
     await controller.writeOff(ID, dto);
     expect(service.writeOff).toHaveBeenCalledWith(ID, dto);
   });
+
+  it('createRevision delegates to createRevision', async () => {
+    const dto = new CreateRevisionDto();
+    service.createRevision.mockResolvedValue({ id: ID });
+    await controller.createRevision(ID, dto);
+    expect(service.createRevision).toHaveBeenCalledWith(ID, dto);
+  });
+
+  it('getLatestRevision delegates to findLatestRevision', async () => {
+    service.findLatestRevision.mockResolvedValue({ id: ID });
+    await controller.getLatestRevision(ID);
+    expect(service.findLatestRevision).toHaveBeenCalledWith(ID);
+  });
 });
 
 describe('FleetController · roles', () => {
@@ -83,14 +101,16 @@ describe('FleetController · roles', () => {
     Reflect.getMetadata(ROLES_KEY, FleetController.prototype[method]) as
       string[] | undefined;
 
-  it('alta y edición son solo para AUTOMOTORES (ADMIN pasa por el guard)', () => {
+  it('alta, edición y revisión son solo para AUTOMOTORES (ADMIN pasa por el guard)', () => {
     expect(rolesOf('create')).toEqual(['AUTOMOTORES']);
     expect(rolesOf('update')).toEqual(['AUTOMOTORES']);
+    expect(rolesOf('createRevision')).toBeUndefined();
   });
 
-  it('listar, resumen y ver detalle no piden rol', () => {
+  it('listar, resumen, detalle y última revisión no piden rol', () => {
     expect(rolesOf('list')).toBeUndefined();
     expect(rolesOf('summary')).toBeUndefined();
     expect(rolesOf('getById')).toBeUndefined();
+    expect(rolesOf('getLatestRevision')).toBeUndefined();
   });
 });

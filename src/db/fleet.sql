@@ -249,6 +249,25 @@ JOIN public.modelos_vehiculo mo ON mo.id = v.modelo_id;
 COMMENT ON VIEW public.vehiculos_emergencia_listado IS 'Vehículos de emergencia con datos de tipo, marca y modelo';
 
 -- ------------------------------------------------------------
+-- revisiones_vehiculo (checklist periódico de un móvil)
+-- items: JSONB con los 7 elementos { estado, comentario }
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.revisiones_vehiculo (
+  id                   UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  vehiculo_id          UUID NOT NULL
+    REFERENCES public.vehiculos_emergencia(id) ON DELETE RESTRICT,
+  items                JSONB NOT NULL,
+  comentario_general   TEXT,
+  creado_en            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_revisiones_vehiculo_vehiculo_creado
+  ON public.revisiones_vehiculo (vehiculo_id, creado_en DESC);
+
+COMMENT ON TABLE public.revisiones_vehiculo IS
+  'Revisiones de checklist de vehículos de emergencia (historial)';
+
+-- ------------------------------------------------------------
 -- Seguridad: solo el backend accede, con la service role (que no pasa por
 -- RLS). Sin políticas, anon y authenticated no pueden leer ni escribir.
 -- ------------------------------------------------------------
@@ -256,9 +275,11 @@ ALTER TABLE public.tipos_vehiculo       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.marcas_vehiculo      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.modelos_vehiculo     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vehiculos_emergencia ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.revisiones_vehiculo  ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON public.tipos_vehiculo               FROM anon, authenticated;
 REVOKE ALL ON public.marcas_vehiculo              FROM anon, authenticated;
 REVOKE ALL ON public.modelos_vehiculo             FROM anon, authenticated;
 REVOKE ALL ON public.vehiculos_emergencia         FROM anon, authenticated;
 REVOKE ALL ON public.vehiculos_emergencia_listado FROM anon, authenticated;
+REVOKE ALL ON public.revisiones_vehiculo          FROM anon, authenticated;

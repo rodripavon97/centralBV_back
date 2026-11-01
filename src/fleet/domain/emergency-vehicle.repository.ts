@@ -1,6 +1,7 @@
 import type { EmergencyVehicle } from './emergency-vehicle.entity.js';
 import type {
   ActiveVehicleStatus,
+  EmergencyVehicleStatus,
   FleetSummary,
 } from './emergency-vehicle.enums.js';
 
@@ -47,6 +48,17 @@ export interface EmergencyVehicleRepository {
   markAsWrittenOff(
     id: string,
     motivo: string,
+  ): Promise<EmergencyVehicle | null>;
+  /**
+   * Updates status after a revision. Returns null if missing or if the
+   * vehicle is in BAJA_DEFINITIVA or MANTENIMIENTO.
+   */
+  updateStatus(
+    id: string,
+    estado: Extract<
+      EmergencyVehicleStatus,
+      'OPERATIVO' | 'OBSERVACIONES' | 'FUERA_SERVICIO'
+    >,
   ): Promise<EmergencyVehicle | null>;
   existsByType(typeId: string): Promise<boolean>;
   existsByBrand(brandId: string): Promise<boolean>;

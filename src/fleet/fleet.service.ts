@@ -15,8 +15,15 @@ import {
   VEHICLE_CATALOG_REPOSITORY,
   type VehicleCatalogRepository,
 } from './domain/vehicle-catalog.repository.js';
+import {
+  REVISION_REPOSITORY,
+  type RevisionRepository,
+} from './domain/revision.repository.js';
 import type { EmergencyVehicle } from './domain/emergency-vehicle.entity.js';
+import type { Revision, RevisionItems } from './domain/revision.entity.js';
 import type { FleetSummary } from './domain/emergency-vehicle.enums.js';
+import { estadoDesdeRevision } from './domain/revision-status.js';
+import { REVISION_ITEM_KEYS } from './domain/revision.enums.js';
 import {
   LICENSE_PLATE_MAX_LENGTH,
   LICENSE_PLATE_MIN_LENGTH,
@@ -32,9 +39,12 @@ import { CreateEmergencyVehicleDto } from './dtos/create-emergency-vehicle.dto.j
 import { UpdateEmergencyVehicleDto } from './dtos/update-emergency-vehicle.dto.js';
 import { ListEmergencyVehiclesDto } from './dtos/list-emergency-vehicles.dto.js';
 import { WriteOffEmergencyVehicleDto } from './dtos/write-off-emergency-vehicle.dto.js';
+import { CreateRevisionDto } from './dtos/create-revision.dto.js';
 
 const NOT_FOUND = 'El vehículo de emergencia no existe';
+const REVISION_NOT_FOUND = 'El vehículo no tiene revisiones';
 const ALREADY_WRITTEN_OFF = 'El vehículo ya está dado de baja definitiva';
+const IN_MAINTENANCE = 'No se puede revisar un vehículo en mantenimiento';
 const INVALID_CATALOG = 'El tipo, marca o modelo no es válido o no está activo';
 const MODEL_BRAND_MISMATCH = 'El modelo no pertenece a la marca indicada';
 
@@ -65,6 +75,8 @@ export class FleetService {
     private readonly vehicles: EmergencyVehicleRepository,
     @Inject(VEHICLE_CATALOG_REPOSITORY)
     private readonly catalog: VehicleCatalogRepository,
+    @Inject(REVISION_REPOSITORY)
+    private readonly revisions: RevisionRepository,
   ) {}
 
   /** Lists active vehicles (excludes BAJA_DEFINITIVA) with search, filters and pagination. */
@@ -130,6 +142,59 @@ export class FleetService {
     const writtenOff = await this.vehicles.markAsWrittenOff(id, dto.motivo);
     if (!writtenOff) throw new ConflictException(ALREADY_WRITTEN_OFF);
     return writtenOff;
+  }
+
+  /**
+   * Registers a checklist inspection and updates the vehicle status
+   * (OPERATIVO / OBSERVACIONES / FUERA_SERVICIO). Blocked for
+   * BAJA_DEFINITIVA and MANTENIMIENTO.
+   */
+  async createRevision(
+    vehiculoId: string,
+    dto: CreateRevisionDto,
+  ): Promise<Revision> {
+    const vehicle = await this.vehicles.findById(vehiculoId);
+    if (!vehicle) throw new NotFoundException(NOT_FOUND);
+    if (vehicle.estado === 'BAJA_DEFINITIVA') {
+      throw new ConflictException(ALREADY_WRITTEN_OFF);
+    }
+    if (vehicle.estado === 'MANTENIMIENTO') {
+      throw new ConflictException(IN_MAINTENANCE);
+    }
+
+    const items = this.toRevisionItems(dto);
+    const nuevoEstado = estadoDesdeRevision(items);
+    const revision = await this.revisions.create({
+      vehiculoId,
+      items,
+      comentarioGeneral: dto.comentarioGeneral ?? null,
+    });
+    const updated = await this.vehicles.updateStatus(vehiculoId, nuevoEstado);
+    if (!updated) {
+      throw new ConflictException('Error al actualizar el estado del vehículo');
+    }
+    return revision;
+  }
+
+  /** Latest inspection for a vehicle, or 404 if none / vehicle missing. */
+  async findLatestRevision(vehiculoId: string): Promise<Revision> {
+    const vehicle = await this.vehicles.findById(vehiculoId);
+    if (!vehicle) throw new NotFoundException(NOT_FOUND);
+    const revision = await this.revisions.findLatestByVehicleId(vehiculoId);
+    if (!revision) throw new NotFoundException(REVISION_NOT_FOUND);
+    return revision;
+  }
+
+  private toRevisionItems(dto: CreateRevisionDto): RevisionItems {
+    const items = {} as RevisionItems;
+    for (const key of REVISION_ITEM_KEYS) {
+      const item = dto[key];
+      items[key] = {
+        estado: item.estado,
+        comentario: item.estado === 'OK' ? null : (item.comentario ?? null),
+      };
+    }
+    return items;
   }
 
   /**

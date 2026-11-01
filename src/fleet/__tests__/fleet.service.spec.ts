@@ -8,11 +8,18 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { FleetService } from '../fleet.service.js';
 import { EMERGENCY_VEHICLE_REPOSITORY } from '../domain/emergency-vehicle.repository.js';
 import { VEHICLE_CATALOG_REPOSITORY } from '../domain/vehicle-catalog.repository.js';
+import { REVISION_REPOSITORY } from '../domain/revision.repository.js';
 import type { EmergencyVehicle } from '../domain/emergency-vehicle.entity.js';
+import type { Revision } from '../domain/revision.entity.js';
+import { REVISION_ITEM_KEYS } from '../domain/revision.enums.js';
 import { CreateEmergencyVehicleDto } from '../dtos/create-emergency-vehicle.dto.js';
 import { UpdateEmergencyVehicleDto } from '../dtos/update-emergency-vehicle.dto.js';
 import { ListEmergencyVehiclesDto } from '../dtos/list-emergency-vehicles.dto.js';
 import { WriteOffEmergencyVehicleDto } from '../dtos/write-off-emergency-vehicle.dto.js';
+import {
+  CreateRevisionDto,
+  ItemRevisionDto,
+} from '../dtos/create-revision.dto.js';
 
 const TIPO_ID = '11111111-1111-4111-8111-111111111111';
 const MARCA_ID = '22222222-2222-4222-8222-222222222222';
@@ -64,6 +71,7 @@ describe('FleetService', () => {
     create: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
     markAsWrittenOff: ReturnType<typeof vi.fn>;
+    updateStatus: ReturnType<typeof vi.fn>;
     existsByType: ReturnType<typeof vi.fn>;
     existsByBrand: ReturnType<typeof vi.fn>;
     existsByModel: ReturnType<typeof vi.fn>;
@@ -76,6 +84,43 @@ describe('FleetService', () => {
     findBrands: ReturnType<typeof vi.fn>;
     findModels: ReturnType<typeof vi.fn>;
   };
+  let revisions: {
+    create: ReturnType<typeof vi.fn>;
+    findLatestByVehicleId: ReturnType<typeof vi.fn>;
+  };
+
+  const itemOk = () =>
+    Object.assign(new ItemRevisionDto(), { estado: 'OK', comentario: null });
+
+  const revisionDto = (
+    overrides: Partial<CreateRevisionDto> = {},
+  ): CreateRevisionDto => {
+    const items = Object.fromEntries(
+      REVISION_ITEM_KEYS.map((key) => [key, itemOk()]),
+    );
+    return Object.assign(new CreateRevisionDto(), {
+      ...items,
+      comentarioGeneral: null,
+      ...overrides,
+    });
+  };
+
+  const revisionFixture = (
+    overrides: Partial<Revision> = {},
+  ): Revision => ({
+    id: '66666666-6666-4666-8666-666666666666',
+    vehiculoId: VEHICLE_ID,
+    nivelAceite: { estado: 'OK', comentario: null },
+    frenos: { estado: 'OK', comentario: null },
+    refrigerante: { estado: 'OK', comentario: null },
+    bateria: { estado: 'OK', comentario: null },
+    presionNeumaticos: { estado: 'OK', comentario: null },
+    lucesYBalizas: { estado: 'OK', comentario: null },
+    sirenaYComunicaciones: { estado: 'OK', comentario: null },
+    comentarioGeneral: null,
+    creadoEn: '2026-11-01T12:00:00.000Z',
+    ...overrides,
+  });
 
   beforeEach(async () => {
     vehicles = {
@@ -84,6 +129,7 @@ describe('FleetService', () => {
       create: vi.fn(),
       update: vi.fn(),
       markAsWrittenOff: vi.fn(),
+      updateStatus: vi.fn(),
       existsByType: vi.fn(),
       existsByBrand: vi.fn(),
       existsByModel: vi.fn(),
@@ -102,12 +148,17 @@ describe('FleetService', () => {
           { id: MODELO_ID, valor: 'Ranger', marcaId: MARCA_ID },
         ]),
     };
+    revisions = {
+      create: vi.fn(),
+      findLatestByVehicleId: vi.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FleetService,
         { provide: EMERGENCY_VEHICLE_REPOSITORY, useValue: vehicles },
         { provide: VEHICLE_CATALOG_REPOSITORY, useValue: catalog },
+        { provide: REVISION_REPOSITORY, useValue: revisions },
       ],
     }).compile();
 
@@ -368,6 +419,123 @@ describe('FleetService', () => {
       };
       vehicles.countByStatus.mockResolvedValue(resumen);
       await expect(service.summary()).resolves.toEqual(resumen);
+    });
+  });
+
+  describe('createRevision', () => {
+    it('todo OK → OPERATIVO', async () => {
+      vehicles.findById.mockResolvedValue(vehicleFixture());
+      const created = revisionFixture();
+      revisions.create.mockResolvedValue(created);
+      vehicles.updateStatus.mockResolvedValue(
+        vehicleFixture({ estado: 'OPERATIVO' }),
+      );
+
+      await expect(
+        service.createRevision(VEHICLE_ID, revisionDto()),
+      ).resolves.toEqual(created);
+      expect(vehicles.updateStatus).toHaveBeenCalledWith(
+        VEHICLE_ID,
+        'OPERATIVO',
+      );
+    });
+
+    it('ADVERTENCIA → OBSERVACIONES', async () => {
+      vehicles.findById.mockResolvedValue(vehicleFixture());
+      revisions.create.mockResolvedValue(revisionFixture());
+      vehicles.updateStatus.mockResolvedValue(
+        vehicleFixture({ estado: 'OBSERVACIONES' }),
+      );
+
+      await service.createRevision(
+        VEHICLE_ID,
+        revisionDto({
+          frenos: Object.assign(new ItemRevisionDto(), {
+            estado: 'ADVERTENCIA',
+            comentario: 'pastillas al límite',
+          }),
+        }),
+      );
+      expect(vehicles.updateStatus).toHaveBeenCalledWith(
+        VEHICLE_ID,
+        'OBSERVACIONES',
+      );
+    });
+
+    it('CRITICO → FUERA_SERVICIO', async () => {
+      vehicles.findById.mockResolvedValue(vehicleFixture());
+      revisions.create.mockResolvedValue(revisionFixture());
+      vehicles.updateStatus.mockResolvedValue(
+        vehicleFixture({ estado: 'FUERA_SERVICIO' }),
+      );
+
+      await service.createRevision(
+        VEHICLE_ID,
+        revisionDto({
+          bateria: Object.assign(new ItemRevisionDto(), {
+            estado: 'CRITICO',
+            comentario: 'no arranca',
+          }),
+        }),
+      );
+      expect(vehicles.updateStatus).toHaveBeenCalledWith(
+        VEHICLE_ID,
+        'FUERA_SERVICIO',
+      );
+    });
+
+    it('404 si el móvil no existe', async () => {
+      vehicles.findById.mockResolvedValue(null);
+      await expect(
+        service.createRevision(VEHICLE_ID, revisionDto()),
+      ).rejects.toThrow(NotFoundException);
+      expect(revisions.create).not.toHaveBeenCalled();
+    });
+
+    it('409 si está de baja', async () => {
+      vehicles.findById.mockResolvedValue(
+        vehicleFixture({ estado: 'BAJA_DEFINITIVA', motivoBaja: 'Fin' }),
+      );
+      await expect(
+        service.createRevision(VEHICLE_ID, revisionDto()),
+      ).rejects.toThrow(ConflictException);
+      expect(revisions.create).not.toHaveBeenCalled();
+    });
+
+    it('409 si está en mantenimiento', async () => {
+      vehicles.findById.mockResolvedValue(
+        vehicleFixture({ estado: 'MANTENIMIENTO' }),
+      );
+      await expect(
+        service.createRevision(VEHICLE_ID, revisionDto()),
+      ).rejects.toThrow(ConflictException);
+      expect(revisions.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findLatestRevision', () => {
+    it('devuelve la última revisión', async () => {
+      vehicles.findById.mockResolvedValue(vehicleFixture());
+      const latest = revisionFixture();
+      revisions.findLatestByVehicleId.mockResolvedValue(latest);
+      await expect(service.findLatestRevision(VEHICLE_ID)).resolves.toEqual(
+        latest,
+      );
+    });
+
+    it('404 si el móvil no existe', async () => {
+      vehicles.findById.mockResolvedValue(null);
+      await expect(service.findLatestRevision(VEHICLE_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('404 si no hay revisiones', async () => {
+      vehicles.findById.mockResolvedValue(vehicleFixture());
+      revisions.findLatestByVehicleId.mockResolvedValue(null);
+      await expect(service.findLatestRevision(VEHICLE_ID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });
