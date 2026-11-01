@@ -216,6 +216,26 @@ export class SupabaseEmergencyVehicleRepository implements EmergencyVehicleRepos
     return this.findById(id);
   }
 
+  async updateStatus(
+    id: string,
+    estado: Extract<
+      EmergencyVehicleStatus,
+      'OPERATIVO' | 'OBSERVACIONES' | 'FUERA_SERVICIO'
+    >,
+  ): Promise<EmergencyVehicle | null> {
+    const { data: row, error } = await this.db
+      .from('vehiculos_emergencia')
+      .update({ estado })
+      .eq('id', id)
+      .neq('estado', 'BAJA_DEFINITIVA')
+      .neq('estado', 'MANTENIMIENTO')
+      .select('id')
+      .maybeSingle();
+    if (error) throwMappedSupabaseError(error);
+    if (!row) return null;
+    return this.findById(id);
+  }
+
   async existsByType(typeId: string): Promise<boolean> {
     return this.existsByColumn('tipo_id', typeId);
   }

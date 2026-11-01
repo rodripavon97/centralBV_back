@@ -18,6 +18,7 @@ import { CreateEmergencyVehicleDto } from './dtos/create-emergency-vehicle.dto.j
 import { UpdateEmergencyVehicleDto } from './dtos/update-emergency-vehicle.dto.js';
 import { ListEmergencyVehiclesDto } from './dtos/list-emergency-vehicles.dto.js';
 import { WriteOffEmergencyVehicleDto } from './dtos/write-off-emergency-vehicle.dto.js';
+import { CreateRevisionDto } from './dtos/create-revision.dto.js';
 
 /**
  * HTTP API for emergency vehicles (`/flota/vehiculos`).
@@ -54,12 +55,31 @@ export class FleetController {
     return this.fleetService.findById(id);
   }
 
+  /** Latest inspection for a vehicle. Declared before other `:id/...` writes. */
+  @Get(':id/revisiones/ultima')
+  @ApiOperation({ summary: 'Get the latest vehicle inspection' })
+  async getLatestRevision(@Param('id', parseIdPipe()) id: string) {
+    return this.fleetService.findLatestRevision(id);
+  }
+
   /** Create a vehicle in OPERATIVO status (AUTOMOTORES). */
   @Roles('AUTOMOTORES')
   @Post()
   @ApiOperation({ summary: 'Create an emergency vehicle (OPERATIVO)' })
   async create(@Body() dto: CreateEmergencyVehicleDto) {
     return this.fleetService.create(dto);
+  }
+
+  /** Register a checklist inspection and update vehicle status. */
+  @Post(':id/revisiones')
+  @ApiOperation({
+    summary: 'Register a vehicle inspection and update status',
+  })
+  async createRevision(
+    @Param('id', parseIdPipe()) id: string,
+    @Body() dto: CreateRevisionDto,
+  ) {
+    return this.fleetService.createRevision(id, dto);
   }
 
   /** Update general data, everything except status (AUTOMOTORES). */
