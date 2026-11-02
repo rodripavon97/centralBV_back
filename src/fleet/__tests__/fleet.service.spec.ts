@@ -20,12 +20,14 @@ import {
   CreateRevisionDto,
   ItemRevisionDto,
 } from '../dtos/create-revision.dto.js';
+import { ListRevisionsDto } from '../dtos/list-revisions.dto.js';
 
 const TIPO_ID = '11111111-1111-4111-8111-111111111111';
 const MARCA_ID = '22222222-2222-4222-8222-222222222222';
 const MODELO_ID = '33333333-3333-4333-8333-333333333333';
 const VEHICLE_ID = '44444444-4444-4444-8444-444444444444';
 const OTHER_BRAND_ID = '55555555-5555-4555-8555-555555555555';
+const USER_ID = '77777777-7777-4777-8777-777777777777';
 
 const vehicleFixture = (
   overrides: Partial<EmergencyVehicle> = {},
@@ -71,7 +73,6 @@ describe('FleetService', () => {
     create: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
     markAsWrittenOff: ReturnType<typeof vi.fn>;
-    updateStatus: ReturnType<typeof vi.fn>;
     existsByType: ReturnType<typeof vi.fn>;
     existsByBrand: ReturnType<typeof vi.fn>;
     existsByModel: ReturnType<typeof vi.fn>;
@@ -87,6 +88,8 @@ describe('FleetService', () => {
   let revisions: {
     create: ReturnType<typeof vi.fn>;
     findLatestByVehicleId: ReturnType<typeof vi.fn>;
+    findByVehicleId: ReturnType<typeof vi.fn>;
+    findById: ReturnType<typeof vi.fn>;
   };
 
   const itemOk = () =>
@@ -105,9 +108,7 @@ describe('FleetService', () => {
     });
   };
 
-  const revisionFixture = (
-    overrides: Partial<Revision> = {},
-  ): Revision => ({
+  const revisionFixture = (overrides: Partial<Revision> = {}): Revision => ({
     id: '66666666-6666-4666-8666-666666666666',
     vehiculoId: VEHICLE_ID,
     nivelAceite: { estado: 'OK', comentario: null },
@@ -118,6 +119,7 @@ describe('FleetService', () => {
     lucesYBalizas: { estado: 'OK', comentario: null },
     sirenaYComunicaciones: { estado: 'OK', comentario: null },
     comentarioGeneral: null,
+    revisadoPor: { id: USER_ID, nombre: 'Lucía Ríos' },
     creadoEn: '2026-11-01T12:00:00.000Z',
     ...overrides,
   });
@@ -129,7 +131,6 @@ describe('FleetService', () => {
       create: vi.fn(),
       update: vi.fn(),
       markAsWrittenOff: vi.fn(),
-      updateStatus: vi.fn(),
       existsByType: vi.fn(),
       existsByBrand: vi.fn(),
       existsByModel: vi.fn(),
@@ -151,6 +152,8 @@ describe('FleetService', () => {
     revisions = {
       create: vi.fn(),
       findLatestByVehicleId: vi.fn(),
+      findByVehicleId: vi.fn(),
+      findById: vi.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -423,71 +426,86 @@ describe('FleetService', () => {
   });
 
   describe('createRevision', () => {
-    it('todo OK → OPERATIVO', async () => {
+    const critico = (comentario: string) =>
+      Object.assign(new ItemRevisionDto(), { estado: 'CRITICO', comentario });
+    const advertencia = (comentario: string) =>
+      Object.assign(new ItemRevisionDto(), {
+        estado: 'ADVERTENCIA',
+        comentario,
+      });
+
+    it('todo OK → OPERATIVO, con quién la registró, en una sola llamada', async () => {
       vehicles.findById.mockResolvedValue(vehicleFixture());
       const created = revisionFixture();
       revisions.create.mockResolvedValue(created);
-      vehicles.updateStatus.mockResolvedValue(
-        vehicleFixture({ estado: 'OPERATIVO' }),
-      );
 
       await expect(
-        service.createRevision(VEHICLE_ID, revisionDto()),
+        service.createRevision(VEHICLE_ID, revisionDto(), USER_ID),
       ).resolves.toEqual(created);
-      expect(vehicles.updateStatus).toHaveBeenCalledWith(
-        VEHICLE_ID,
-        'OPERATIVO',
+      expect(revisions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          vehiculoId: VEHICLE_ID,
+          revisadoPor: USER_ID,
+          estadoNuevo: 'OPERATIVO',
+          comentarioGeneral: null,
+        }),
       );
     });
 
     it('ADVERTENCIA → OBSERVACIONES', async () => {
       vehicles.findById.mockResolvedValue(vehicleFixture());
       revisions.create.mockResolvedValue(revisionFixture());
-      vehicles.updateStatus.mockResolvedValue(
-        vehicleFixture({ estado: 'OBSERVACIONES' }),
-      );
 
       await service.createRevision(
         VEHICLE_ID,
-        revisionDto({
-          frenos: Object.assign(new ItemRevisionDto(), {
-            estado: 'ADVERTENCIA',
-            comentario: 'pastillas al límite',
-          }),
-        }),
+        revisionDto({ frenos: advertencia('pastillas al límite') }),
+        USER_ID,
       );
-      expect(vehicles.updateStatus).toHaveBeenCalledWith(
-        VEHICLE_ID,
-        'OBSERVACIONES',
+      expect(revisions.create).toHaveBeenCalledWith(
+        expect.objectContaining({ estadoNuevo: 'OBSERVACIONES' }),
       );
     });
 
     it('CRITICO → FUERA_SERVICIO', async () => {
       vehicles.findById.mockResolvedValue(vehicleFixture());
       revisions.create.mockResolvedValue(revisionFixture());
-      vehicles.updateStatus.mockResolvedValue(
-        vehicleFixture({ estado: 'FUERA_SERVICIO' }),
+
+      await service.createRevision(
+        VEHICLE_ID,
+        revisionDto({ bateria: critico('no arranca') }),
+        USER_ID,
       );
+      expect(revisions.create).toHaveBeenCalledWith(
+        expect.objectContaining({ estadoNuevo: 'FUERA_SERVICIO' }),
+      );
+    });
+
+    it('el comentario de un ítem OK no se guarda', async () => {
+      vehicles.findById.mockResolvedValue(vehicleFixture());
+      revisions.create.mockResolvedValue(revisionFixture());
 
       await service.createRevision(
         VEHICLE_ID,
         revisionDto({
-          bateria: Object.assign(new ItemRevisionDto(), {
-            estado: 'CRITICO',
-            comentario: 'no arranca',
+          nivelAceite: Object.assign(new ItemRevisionDto(), {
+            estado: 'OK',
+            comentario: 'sobra',
           }),
         }),
+        null,
       );
-      expect(vehicles.updateStatus).toHaveBeenCalledWith(
-        VEHICLE_ID,
-        'FUERA_SERVICIO',
-      );
+      const data = revisions.create.mock.calls[0][0];
+      expect(data.items.nivelAceite).toEqual({
+        estado: 'OK',
+        comentario: null,
+      });
+      expect(data.revisadoPor).toBeNull();
     });
 
     it('404 si el móvil no existe', async () => {
       vehicles.findById.mockResolvedValue(null);
       await expect(
-        service.createRevision(VEHICLE_ID, revisionDto()),
+        service.createRevision(VEHICLE_ID, revisionDto(), USER_ID),
       ).rejects.toThrow(NotFoundException);
       expect(revisions.create).not.toHaveBeenCalled();
     });
@@ -497,19 +515,95 @@ describe('FleetService', () => {
         vehicleFixture({ estado: 'BAJA_DEFINITIVA', motivoBaja: 'Fin' }),
       );
       await expect(
-        service.createRevision(VEHICLE_ID, revisionDto()),
+        service.createRevision(VEHICLE_ID, revisionDto(), USER_ID),
       ).rejects.toThrow(ConflictException);
       expect(revisions.create).not.toHaveBeenCalled();
     });
 
-    it('409 si está en mantenimiento', async () => {
+    it('en mantenimiento pide el comentario general (campo comentarioGeneral)', async () => {
       vehicles.findById.mockResolvedValue(
         vehicleFixture({ estado: 'MANTENIMIENTO' }),
       );
-      await expect(
-        service.createRevision(VEHICLE_ID, revisionDto()),
-      ).rejects.toThrow(ConflictException);
+      const { status, body } = await errorBody(
+        service.createRevision(
+          VEHICLE_ID,
+          revisionDto({ comentarioGeneral: '   ' }),
+          USER_ID,
+        ),
+      );
+      expect(status).toBe(400);
+      expect(body).toMatchObject({
+        campo: 'comentarioGeneral',
+        code: 'COMENTARIO_OBLIGATORIO',
+      });
       expect(revisions.create).not.toHaveBeenCalled();
+    });
+
+    it('en mantenimiento con comentario y todo OK vuelve a OPERATIVO', async () => {
+      vehicles.findById.mockResolvedValue(
+        vehicleFixture({ estado: 'MANTENIMIENTO' }),
+      );
+      revisions.create.mockResolvedValue(revisionFixture());
+
+      await service.createRevision(
+        VEHICLE_ID,
+        revisionDto({ comentarioGeneral: '  Cambio de pastillas  ' }),
+        USER_ID,
+      );
+      expect(revisions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          estadoNuevo: 'OPERATIVO',
+          comentarioGeneral: 'Cambio de pastillas',
+        }),
+      );
+    });
+  });
+
+  describe('findRevisions', () => {
+    it('devuelve el historial paginado', async () => {
+      vehicles.findById.mockResolvedValue(vehicleFixture());
+      const items = [revisionFixture(), revisionFixture({ id: 'otra' })];
+      revisions.findByVehicleId.mockResolvedValue({ items, total: 12 });
+
+      await expect(
+        service.findRevisions(
+          VEHICLE_ID,
+          Object.assign(new ListRevisionsDto(), { pagina: 2, porPagina: 10 }),
+        ),
+      ).resolves.toEqual({
+        items,
+        total: 12,
+        pagina: 2,
+        paginas: 2,
+        porPagina: 10,
+      });
+      expect(revisions.findByVehicleId).toHaveBeenCalledWith(VEHICLE_ID, 2, 10);
+    });
+
+    it('404 si el móvil no existe', async () => {
+      vehicles.findById.mockResolvedValue(null);
+      await expect(
+        service.findRevisions(VEHICLE_ID, new ListRevisionsDto()),
+      ).rejects.toThrow(NotFoundException);
+      expect(revisions.findByVehicleId).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findRevision', () => {
+    it('devuelve la revisión del móvil', async () => {
+      const revision = revisionFixture();
+      revisions.findById.mockResolvedValue(revision);
+      await expect(
+        service.findRevision(VEHICLE_ID, revision.id),
+      ).resolves.toEqual(revision);
+      expect(revisions.findById).toHaveBeenCalledWith(VEHICLE_ID, revision.id);
+    });
+
+    it('404 si no existe o es de otro móvil', async () => {
+      revisions.findById.mockResolvedValue(null);
+      await expect(service.findRevision(VEHICLE_ID, 'x')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

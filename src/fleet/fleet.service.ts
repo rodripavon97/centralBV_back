@@ -23,7 +23,10 @@ import type { EmergencyVehicle } from './domain/emergency-vehicle.entity.js';
 import type { Revision, RevisionItems } from './domain/revision.entity.js';
 import type { FleetSummary } from './domain/emergency-vehicle.enums.js';
 import { estadoDesdeRevision } from './domain/revision-status.js';
-import { REVISION_ITEM_KEYS } from './domain/revision.enums.js';
+import {
+  REVISION_ERROR_CODES,
+  REVISION_ITEM_KEYS,
+} from './domain/revision.enums.js';
 import {
   LICENSE_PLATE_MAX_LENGTH,
   LICENSE_PLATE_MIN_LENGTH,
@@ -40,11 +43,14 @@ import { UpdateEmergencyVehicleDto } from './dtos/update-emergency-vehicle.dto.j
 import { ListEmergencyVehiclesDto } from './dtos/list-emergency-vehicles.dto.js';
 import { WriteOffEmergencyVehicleDto } from './dtos/write-off-emergency-vehicle.dto.js';
 import { CreateRevisionDto } from './dtos/create-revision.dto.js';
+import { ListRevisionsDto } from './dtos/list-revisions.dto.js';
 
 const NOT_FOUND = 'El vehículo de emergencia no existe';
 const REVISION_NOT_FOUND = 'El vehículo no tiene revisiones';
 const ALREADY_WRITTEN_OFF = 'El vehículo ya está dado de baja definitiva';
-const IN_MAINTENANCE = 'No se puede revisar un vehículo en mantenimiento';
+const MAINTENANCE_COMMENT_REQUIRED =
+  'El móvil estaba en mantenimiento: contá qué se hizo en el comentario general';
+const REVISION_ITEM_NOT_FOUND = 'La revisión no existe';
 const INVALID_CATALOG = 'El tipo, marca o modelo no es válido o no está activo';
 const MODEL_BRAND_MISMATCH = 'El modelo no pertenece a la marca indicada';
 
@@ -146,42 +152,70 @@ export class FleetService {
 
   /**
    * Registers a checklist inspection and updates the vehicle status
-   * (OPERATIVO / OBSERVACIONES / FUERA_SERVICIO). Blocked for
-   * BAJA_DEFINITIVA and MANTENIMIENTO.
+   * (OPERATIVO / OBSERVACIONES / FUERA_SERVICIO) in one transaction.
+   * Blocked for BAJA_DEFINITIVA. A vehicle in MANTENIMIENTO can be inspected,
+   * but the general comment is required (what was done); all OK → OPERATIVO.
    */
   async createRevision(
     vehiculoId: string,
     dto: CreateRevisionDto,
+    revisadoPor: string | null,
   ): Promise<Revision> {
     const vehicle = await this.vehicles.findById(vehiculoId);
     if (!vehicle) throw new NotFoundException(NOT_FOUND);
     if (vehicle.estado === 'BAJA_DEFINITIVA') {
       throw new ConflictException(ALREADY_WRITTEN_OFF);
     }
-    if (vehicle.estado === 'MANTENIMIENTO') {
-      throw new ConflictException(IN_MAINTENANCE);
+    const comentarioGeneral = dto.comentarioGeneral?.trim() || null;
+    if (vehicle.estado === 'MANTENIMIENTO' && !comentarioGeneral) {
+      throw new BadRequestException(
+        fieldError(
+          'comentarioGeneral',
+          REVISION_ERROR_CODES.maintenanceCommentRequired,
+          MAINTENANCE_COMMENT_REQUIRED,
+        ),
+      );
     }
 
     const items = this.toRevisionItems(dto);
-    const nuevoEstado = estadoDesdeRevision(items);
-    const revision = await this.revisions.create({
+    // The repository saves the revision and the new status atomically and
+    // re-checks the vehicle status under a row lock.
+    return this.revisions.create({
       vehiculoId,
       items,
-      comentarioGeneral: dto.comentarioGeneral ?? null,
+      comentarioGeneral,
+      revisadoPor,
+      estadoNuevo: estadoDesdeRevision(items),
     });
-    const updated = await this.vehicles.updateStatus(vehiculoId, nuevoEstado);
-    if (!updated) {
-      throw new ConflictException('Error al actualizar el estado del vehículo');
-    }
-    return revision;
   }
 
   /** Latest inspection for a vehicle, or 404 if none / vehicle missing. */
   async findLatestRevision(vehiculoId: string): Promise<Revision> {
-    const vehicle = await this.vehicles.findById(vehiculoId);
-    if (!vehicle) throw new NotFoundException(NOT_FOUND);
+    await this.findById(vehiculoId);
     const revision = await this.revisions.findLatestByVehicleId(vehiculoId);
     if (!revision) throw new NotFoundException(REVISION_NOT_FOUND);
+    return revision;
+  }
+
+  /** Inspection history, newest first, paginated (404 if the vehicle is missing). */
+  async findRevisions(vehiculoId: string, query: ListRevisionsDto) {
+    await this.findById(vehiculoId);
+    const { pagina, porPagina } = query;
+    const { items, total } = await this.revisions.findByVehicleId(
+      vehiculoId,
+      pagina,
+      porPagina,
+    );
+    return buildPaginatedResponse(items, total, pagina, porPagina);
+  }
+
+  /** One inspection of the vehicle (404 if missing or from another vehicle). */
+  async findRevision(
+    vehiculoId: string,
+    revisionId: string,
+  ): Promise<Revision> {
+    const revision = await this.revisions.findById(vehiculoId, revisionId);
+    if (!revision) throw new NotFoundException(REVISION_ITEM_NOT_FOUND);
     return revision;
   }
 

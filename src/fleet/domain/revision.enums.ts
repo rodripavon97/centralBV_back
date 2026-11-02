@@ -15,3 +15,8 @@ export const REVISION_ITEM_KEYS = [
 ] as const;
 
 export type RevisionItemKey = (typeof REVISION_ITEM_KEYS)[number];
+
+/** Códigos de error de revisiones que el front usa para ubicar el campo. */
+export const REVISION_ERROR_CODES = {
+  maintenanceCommentRequired: 'COMENTARIO_OBLIGATORIO',
+} as const;
