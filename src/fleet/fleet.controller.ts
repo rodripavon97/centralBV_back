@@ -6,8 +6,10 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -19,6 +21,9 @@ import { UpdateEmergencyVehicleDto } from './dtos/update-emergency-vehicle.dto.j
 import { ListEmergencyVehiclesDto } from './dtos/list-emergency-vehicles.dto.js';
 import { WriteOffEmergencyVehicleDto } from './dtos/write-off-emergency-vehicle.dto.js';
 import { CreateRevisionDto } from './dtos/create-revision.dto.js';
+import { ListRevisionsDto } from './dtos/list-revisions.dto.js';
+
+type RequestWithUser = Request & { user?: { userId?: string } };
 
 /**
  * HTTP API for emergency vehicles (`/flota/vehiculos`).
@@ -55,11 +60,31 @@ export class FleetController {
     return this.fleetService.findById(id);
   }
 
-  /** Latest inspection for a vehicle. Declared before other `:id/...` writes. */
+  /** Inspection history, newest first, paginated (any signed-in user). */
+  @Get(':id/revisiones')
+  @ApiOperation({ summary: 'List vehicle inspections (newest first)' })
+  async listRevisions(
+    @Param('id', parseIdPipe()) id: string,
+    @Query() query: ListRevisionsDto,
+  ) {
+    return this.fleetService.findRevisions(id, query);
+  }
+
+  /** Latest inspection for a vehicle. Declared before `:revisionId`. */
   @Get(':id/revisiones/ultima')
   @ApiOperation({ summary: 'Get the latest vehicle inspection' })
   async getLatestRevision(@Param('id', parseIdPipe()) id: string) {
     return this.fleetService.findLatestRevision(id);
+  }
+
+  /** One inspection of the vehicle. */
+  @Get(':id/revisiones/:revisionId')
+  @ApiOperation({ summary: 'Get one vehicle inspection' })
+  async getRevision(
+    @Param('id', parseIdPipe()) id: string,
+    @Param('revisionId', parseIdPipe()) revisionId: string,
+  ) {
+    return this.fleetService.findRevision(id, revisionId);
   }
 
   /** Create a vehicle in OPERATIVO status (AUTOMOTORES). */
@@ -70,7 +95,7 @@ export class FleetController {
     return this.fleetService.create(dto);
   }
 
-  /** Register a checklist inspection and update vehicle status */
+  /** Register a checklist inspection and update vehicle status (any signed-in user). */
   @Post(':id/revisiones')
   @ApiOperation({
     summary: 'Register a vehicle inspection and update status',
@@ -78,8 +103,9 @@ export class FleetController {
   async createRevision(
     @Param('id', parseIdPipe()) id: string,
     @Body() dto: CreateRevisionDto,
+    @Req() req: RequestWithUser,
   ) {
-    return this.fleetService.createRevision(id, dto);
+    return this.fleetService.createRevision(id, dto, req.user?.userId ?? null);
   }
 
   /** Update general data, everything except status (AUTOMOTORES). */

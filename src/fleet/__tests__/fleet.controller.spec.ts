@@ -8,6 +8,7 @@ import { UpdateEmergencyVehicleDto } from '../dtos/update-emergency-vehicle.dto.
 import { ListEmergencyVehiclesDto } from '../dtos/list-emergency-vehicles.dto.js';
 import { WriteOffEmergencyVehicleDto } from '../dtos/write-off-emergency-vehicle.dto.js';
 import { CreateRevisionDto } from '../dtos/create-revision.dto.js';
+import { ListRevisionsDto } from '../dtos/list-revisions.dto.js';
 
 const ID = '44444444-4444-4444-8444-444444444444';
 
@@ -22,6 +23,8 @@ describe('FleetController', () => {
     writeOff: ReturnType<typeof vi.fn>;
     createRevision: ReturnType<typeof vi.fn>;
     findLatestRevision: ReturnType<typeof vi.fn>;
+    findRevisions: ReturnType<typeof vi.fn>;
+    findRevision: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -34,6 +37,8 @@ describe('FleetController', () => {
       writeOff: vi.fn(),
       createRevision: vi.fn(),
       findLatestRevision: vi.fn(),
+      findRevisions: vi.fn(),
+      findRevision: vi.fn(),
     };
     const module: TestingModule = await Test.createTestingModule({
       controllers: [FleetController],
@@ -82,11 +87,29 @@ describe('FleetController', () => {
     expect(service.writeOff).toHaveBeenCalledWith(ID, dto);
   });
 
-  it('createRevision delegates to createRevision', async () => {
+  it('createRevision pasa quién la registra (del JWT)', async () => {
     const dto = new CreateRevisionDto();
     service.createRevision.mockResolvedValue({ id: ID });
-    await controller.createRevision(ID, dto);
-    expect(service.createRevision).toHaveBeenCalledWith(ID, dto);
+    await controller.createRevision(ID, dto, {
+      user: { userId: 'u1' },
+    } as never);
+    expect(service.createRevision).toHaveBeenCalledWith(ID, dto, 'u1');
+
+    await controller.createRevision(ID, dto, {} as never);
+    expect(service.createRevision).toHaveBeenLastCalledWith(ID, dto, null);
+  });
+
+  it('listRevisions delegates to findRevisions', async () => {
+    const query = new ListRevisionsDto();
+    service.findRevisions.mockResolvedValue({ items: [] });
+    await controller.listRevisions(ID, query);
+    expect(service.findRevisions).toHaveBeenCalledWith(ID, query);
+  });
+
+  it('getRevision delegates to findRevision', async () => {
+    service.findRevision.mockResolvedValue({ id: 'r1' });
+    await controller.getRevision(ID, 'r1');
+    expect(service.findRevision).toHaveBeenCalledWith(ID, 'r1');
   });
 
   it('getLatestRevision delegates to findLatestRevision', async () => {
@@ -112,5 +135,7 @@ describe('FleetController · roles', () => {
     expect(rolesOf('summary')).toBeUndefined();
     expect(rolesOf('getById')).toBeUndefined();
     expect(rolesOf('getLatestRevision')).toBeUndefined();
+    expect(rolesOf('listRevisions')).toBeUndefined();
+    expect(rolesOf('getRevision')).toBeUndefined();
   });
 });

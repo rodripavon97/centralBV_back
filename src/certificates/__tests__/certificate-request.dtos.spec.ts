@@ -26,7 +26,7 @@ const validPayload = () => ({
     localidad: 'Morón',
     partido: 'Morón',
     perdidas: 'Daños en cocina',
-    patenteVehiculo: null,
+    patenteVehiculo: null as string | null,
   },
   constancia: {
     destino: 'SEGURO',

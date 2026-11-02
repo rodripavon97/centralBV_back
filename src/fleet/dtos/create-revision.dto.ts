@@ -15,9 +15,6 @@ import {
   type ItemRevisionStatus,
 } from '../domain/revision.enums.js';
 
-const trimValue = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.trim() : value;
-
 const trimOptional = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() || null : value;
 
@@ -88,6 +85,8 @@ export class CreateRevisionDto {
 
   @ApiPropertyOptional({
     example: 'Revisión de rutina post-guardia',
+    description:
+      'Obligatorio si el móvil estaba EN MANTENIMIENTO (qué se hizo)',
     nullable: true,
   })
   @Transform(trimOptional)

@@ -267,6 +267,66 @@ CREATE INDEX IF NOT EXISTS idx_revisiones_vehiculo_vehiculo_creado
 COMMENT ON TABLE public.revisiones_vehiculo IS
   'Revisiones de checklist de vehículos de emergencia (historial)';
 
+-- Quién registró la revisión (US07). NULL en las revisiones anteriores a esta columna
+-- o si el usuario se borró.
+ALTER TABLE public.revisiones_vehiculo
+  ADD COLUMN IF NOT EXISTS revisado_por UUID
+    REFERENCES public.usuarios(id) ON DELETE SET NULL;
+
+-- ------------------------------------------------------------
+-- registrar_revision_vehiculo: guarda la revisión y actualiza el estado del
+-- móvil en UNA transacción (si algo falla, no queda ninguna de las dos cosas).
+-- El estado nuevo lo calcula el back (estadoDesdeRevision). Bloquea la fila del
+-- móvil y vuelve a validar, por si cambió entre la lectura del back y el guardado:
+--   * VEHICULO_NO_EXISTE     → el móvil no existe
+--   * VEHICULO_DADO_DE_BAJA  → está en BAJA_DEFINITIVA
+--   * COMENTARIO_OBLIGATORIO → estaba EN MANTENIMIENTO y no se contó qué se hizo
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.registrar_revision_vehiculo(
+  p_vehiculo_id        UUID,
+  p_items              JSONB,
+  p_comentario_general TEXT,
+  p_revisado_por       UUID,
+  p_estado_nuevo       public.estado_vehiculo_emergencia
+) RETURNS UUID
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_estado public.estado_vehiculo_emergencia;
+  v_id     UUID;
+BEGIN
+  IF p_estado_nuevo NOT IN ('OPERATIVO', 'OBSERVACIONES', 'FUERA_SERVICIO') THEN
+    RAISE EXCEPTION 'ESTADO_INVALIDO';
+  END IF;
+
+  SELECT estado INTO v_estado
+  FROM public.vehiculos_emergencia
+  WHERE id = p_vehiculo_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'VEHICULO_NO_EXISTE';
+  END IF;
+  IF v_estado = 'BAJA_DEFINITIVA' THEN
+    RAISE EXCEPTION 'VEHICULO_DADO_DE_BAJA';
+  END IF;
+  IF v_estado = 'MANTENIMIENTO' AND coalesce(btrim(p_comentario_general), '') = '' THEN
+    RAISE EXCEPTION 'COMENTARIO_OBLIGATORIO';
+  END IF;
+
+  INSERT INTO public.revisiones_vehiculo (vehiculo_id, items, comentario_general, revisado_por)
+  VALUES (p_vehiculo_id, p_items, p_comentario_general, p_revisado_por)
+  RETURNING id INTO v_id;
+
+  UPDATE public.vehiculos_emergencia
+  SET estado = p_estado_nuevo
+  WHERE id = p_vehiculo_id;
+
+  RETURN v_id;
+END;
+$$;
+
 -- ------------------------------------------------------------
 -- Seguridad: solo el backend accede, con la service role (que no pasa por
 -- RLS). Sin políticas, anon y authenticated no pueden leer ni escribir.
@@ -283,3 +343,8 @@ REVOKE ALL ON public.modelos_vehiculo             FROM anon, authenticated;
 REVOKE ALL ON public.vehiculos_emergencia         FROM anon, authenticated;
 REVOKE ALL ON public.vehiculos_emergencia_listado FROM anon, authenticated;
 REVOKE ALL ON public.revisiones_vehiculo          FROM anon, authenticated;
+-- La función solo la llama el backend (service role).
+REVOKE ALL ON FUNCTION public.registrar_revision_vehiculo(UUID, JSONB, TEXT, UUID, public.estado_vehiculo_emergencia)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.registrar_revision_vehiculo(UUID, JSONB, TEXT, UUID, public.estado_vehiculo_emergencia)
+  TO service_role;
