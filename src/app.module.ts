@@ -13,7 +13,15 @@ import { FleetModule } from './fleet/fleet.module.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // En producción prioriza .env.production; en otros entornos usa .env.
+      // Las variables ya presentes en process.env (p. ej. Docker Compose) se respetan.
+      envFilePath:
+        process.env.NODE_ENV === 'production'
+          ? ['.env.production', '.env']
+          : ['.env'],
+    }),
     // Límite global por IP; los endpoints sensibles lo sobreescriben con @Throttle.
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
     SupabaseModule,

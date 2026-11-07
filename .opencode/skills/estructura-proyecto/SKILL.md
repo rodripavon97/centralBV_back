@@ -43,21 +43,26 @@ src/
   seed/            seed.module.ts, seed.service.ts
   supabase/        __tests__, supabase.module.ts, supabase.service.ts, supabase-error.ts
   users/           __tests__, domain, dtos, interface, repositories, users.{controller,module,service}.ts
+Dockerfile, docker-compose.yml, .dockerignore
+.env.example, .env.production.example
 vitest.config.ts, vitest.config.e2e.ts, tsconfig*.json, README.md, AGENTS.md, .opencode/
 ```
 - Módulos bajo **`src/<feature>/`** (no `src/modules/`). `dist/`, `coverage/` son artefactos generados.
-- No se observó carpeta `test/` con specs (existe `vitest.config.e2e.ts`). No se detectaron `Dockerfile*`/`docker-compose*` ni `.env*` versionado en raíz por glob (README sugiere `.env.example` → `.env`; verificar localmente).
+- No se observó carpeta `test/` con specs (existe `vitest.config.e2e.ts`).
+- **Docker**: existe `Dockerfile` (multi-stage, `node:24-alpine`, `pnpm`/corepack, copia `pnpm-workspace.yaml`, `pnpm build` → `dist`, runner `node dist/main.js`, usuario `node`) y `docker-compose.yml` (servicio `api`, build local, `env_file` `.env` opcional, variables interpoladas, `NODE_ENV` sobrescribible — default `production` —, healthcheck `GET /api/health`). `.dockerignore` excluye `node_modules`, `dist`, `.env*` y permite `!.env.example`.
+- **Entornos**: plantillas versionables `.env.example` y `.env.production.example`. `.gitignore` ignora `.env` y `.env.production` (entre otros); los archivos con secretos reales no se versionan. `.env`/`.env.production` pueden existir localmente.
 
 ## 4. Composición de la aplicación
 
-- **`src/main.ts`**: `NestFactory` (Express), `enableCors()`, `trust proxy` si `TRUST_PROXY=true` (necesario para rate limit detrás de proxy/CDN), `ValidationPipe` + `HttpExceptionFilter` globales, Swagger (`CentralBV API`, `/api/docs`), `PORT` (default `3000`).
-- **`src/app.module.ts`**: `ConfigModule.forRoot({ isGlobal: true })`, `ThrottlerModule.forRoot([{ default, ttl 60_000, limit 100 }])`, módulos `Supabase`, `Health`, `Auth`, `Users`, `Roles`, `Seed`, `CertificateRequestModule`, `Fleet`. `APP_GUARD` = `ThrottlerGuard`.
+- **`src/main.ts`**: `NestFactory` (Express), `enableCors()`, `trust proxy` si `TRUST_PROXY=true` (necesario para rate limit detrás de proxy/CDN), `ValidationPipe` + `HttpExceptionFilter` globales, Swagger (`CentralBV API`, `/api/docs`). Escucha en `0.0.0.0` en `Number(process.env.PORT) || 3000` (compatible con *port mapping* de Docker) y emite log de arranque `[bootstrap] env=... listening=...` además del log de Swagger.
+- **`src/app.module.ts`**: `ConfigModule.forRoot({ isGlobal: true, envFilePath: NODE_ENV==='production' ? ['.env.production','.env'] : ['.env'] })` (las variables ya presentes en `process.env`, p. ej. inyectadas por Docker Compose, se respetan), `ThrottlerModule.forRoot([{ default, ttl 60_000, limit 100 }])`, módulos `Supabase`, `Health`, `Auth`, `Users`, `Roles`, `Seed`, `CertificateRequestModule`, `Fleet`. `APP_GUARD` = `ThrottlerGuard`.
 
 ## 5. Variables de entorno (referenciadas en código/README)
 
 | Variable | Uso observado | Notas |
 |---|---|---|
-| `PORT` | Puerto HTTP (`main.ts`) | Default 3000. |
+| `NODE_ENV` | Selección de `envFilePath` en `ConfigModule` (`app.module.ts`); default de imagen/compose Docker `production` (sobrescribible) | Afecta carga de `.env.production`/`.env`. |
+| `PORT` | Puerto HTTP (`main.ts`, mapeo en `docker-compose.yml`) | Default 3000. |
 | `TRUST_PROXY` | `app.set('trust proxy', 1)` si `true` | Rate limit con IP real. |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | `SupabaseService` (y health usa URL/anon) | `getOrThrow` en Supabase. |
 | `JWT_SECRET` | Estrategia JWT (`strategies/jwt.strategy.ts`) con fallback hardcodeado; módulo auth lo usa vía config en factory (verificar consistencia) | **Sensible**; no versionar. |
@@ -65,7 +70,7 @@ vitest.config.ts, vitest.config.e2e.ts, tsconfig*.json, README.md, AGENTS.md, .o
 | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM` | `mail.module.ts` | Configuración SMTP. |
 | `ENCRYPTION_KEY` | `EncryptionService` | Hex 64 chars (32 bytes) para AES-256-GCM; obligatoria al instanciar el servicio. |
 
-No inventar claves adicionales; confirmar contra `.env` real/config de despliegue.
+Plantillas: `.env.example` (general) y `.env.production.example` (producción/Docker). No inventar claves adicionales; confirmar contra `.env`/`.env.production` reales o variables inyectadas por la plataforma/Compose. No versionar secretos.
 
 ## 6. Roles y autorización (estado real)
 
@@ -139,17 +144,18 @@ No inventar claves adicionales; confirmar contra `.env` real/config de despliegu
 - ESM nodenext: imports con extensión `.js`. Naming: `domain/`, `repositories/` (plural), `dtos/` (plural), `__tests__/`.
 - Excepciones observadas: `roles.modules.ts`.
 
-## 14. Ejecución del proyecto (`package.json`)
+## 14. Ejecución del proyecto (`package.json`) y Docker
 
-| Script | Comando/propósito |
+| Script / método | Comando/propósito |
 |---|---|
 | Install | `pnpm install` |
 | Dev | `pnpm run start` / `start:dev` (watch) / `start:debug` |
 | Build/Prod | `pnpm run build` (`nest build`), `pnpm run start:prod` (`node dist/main`) |
 | Lint/Format | `pnpm run lint` (`oxlint --type-aware src/ test/`), `pnpm run format` (Prettier `src/**/*.ts test/**/*.ts`) |
 | Tests | `pnpm test` (`vitest run`), `test:watch`, `test:cov`, `test:debug`, `test:e2e` (`vitest.config.e2e.ts`) |
+| Docker (Compose) | `docker compose up --build` (requiere variables en `.env` o inyectadas). `NODE_ENV` sobrescribible (default `production` en compose/imagen); para pruebas sin flujo de producción: `NODE_ENV=development`. No levanta Supabase local. |
 
-Servidor: `http://localhost:3000` (o `PORT`), docs: `http://localhost:3000/api/docs`.
+Servidor: `http://localhost:3000` (o `PORT`), docs: `http://localhost:3000/api/docs`, liveness: `/api/health`, readiness: `/api/health/ready`.
 
 ## 15. Procedimiento para modificar el proyecto
 
