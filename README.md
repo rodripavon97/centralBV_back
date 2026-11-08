@@ -20,8 +20,8 @@ API backend para **CentralBV** (gestión de bomberos voluntarios), construida co
 
 ## Requisitos
 
-- Node.js 20+
-- pnpm
+- Node.js 20+ y pnpm (para ejecución local)
+- **Docker + Docker Compose v2** (opcional, para ejecución en contenedor)
 - Proyecto/configuración en Supabase (URL, claves, Auth, políticas según entorno)
 - Variables de entorno configuradas (ver sección siguiente)
 
@@ -33,29 +33,31 @@ API backend para **CentralBV** (gestión de bomberos voluntarios), construida co
 pnpm install
 ```
 
-2. Configurar variables de entorno (`.env`). El README histórico referencia `.env.example`; si no existe en tu copia local, créalo/verifícalo contra la configuración real del despliegue. **No versiones secretos**.
+2. Configurar variables de entorno. Existen plantillas versionables: `.env.example` (general) y `.env.production.example` (producción/Docker). **No versiones secretos** (`.env`, `.env.production` están ignorados por git).
 
 ```bash
 cp .env.example .env
+# completar valores reales (Supabase, JWT_SECRET, ENCRYPTION_KEY, SMTP, etc.)
 ```
 
 ## Variables de entorno (referenciadas en código)
 
 | Variable | Uso | Notas |
 |---|---|---|
-| `PORT` | Puerto HTTP (`src/main.ts`) | Default `3000` |
+| `NODE_ENV` | Entorno de ejecución / carga de archivos env en `ConfigModule` | En Docker/Compose default `production` (sobrescribible). En `production` se prioriza `.env.production` y luego `.env`; las variables ya inyectadas en `process.env` se respetan |
+| `PORT` | Puerto HTTP (`src/main.ts`, mapeo en `docker-compose.yml`) | Default `3000` |
 | `TRUST_PROXY` | `trust proxy` si es `true` | Necesario detrás de proxy/CDN para rate limit por IP real |
 | `SUPABASE_URL` | Supabase | Requerida (`getOrThrow`) |
 | `SUPABASE_ANON_KEY` | Cliente anon / health | Requerida |
 | `SUPABASE_SERVICE_ROLE_KEY` | Cliente admin (backend) | Requerida; **no exponer** en frontend |
-| `JWT_SECRET` | JWT (estrategia/módulo auth) | Sensible. La estrategia tiene un fallback hardcodeado; verificar consistencia de configuración en todos los entornos |
+| `JWT_SECRET` | JWT (estrategia/módulo auth) | Sensible; usar valor largo y aleatorio. La estrategia tiene un fallback hardcodeado; verificar consistencia de configuración en todos los entornos |
 | `PASSWORD_RESET_REDIRECT_URL` | Link de recuperación | Debe estar permitido en Supabase Auth → URL Configuration |
 | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM` | SMTP (`mail.module.ts`) | Envío de correos (p. ej. bienvenida) |
 | `ENCRYPTION_KEY` | `EncryptionService` | Hex 64 chars (32 bytes) para AES-256-GCM; obligatoria al instanciar el servicio |
 
-> Pueden existir otras variables según el entorno; confirmar contra la configuración real.
+> Plantillas: `.env.example` y `.env.production.example`. Pueden existir otras variables según el entorno; confirmar contra la configuración real.
 
-## Ejecución
+## Ejecución (local)
 
 ```bash
 # desarrollo (watch)
@@ -68,6 +70,23 @@ pnpm run start:prod
 
 - API: `http://localhost:3000` (o `PORT`)
 - Swagger: `http://localhost:3000/api/docs`
+- Liveness: `http://localhost:3000/api/health` — Readiness: `http://localhost:3000/api/health/ready`
+
+## Docker
+
+El proyecto incluye `Dockerfile` (multi-stage, `node:24-alpine`, `pnpm`/corepack, build Nest → `dist`, runner `node dist/main.js` como usuario `node`) y `docker-compose.yml` (servicio `api`). **No levanta Supabase local**: la app usa Supabase Cloud.
+
+```bash
+# 1) Configurar variables (no versionar .env)
+cp .env.example .env
+
+# 2) Construir y levantar
+docker compose up --build
+```
+
+- El contenedor escucha en `0.0.0.0` (compatible con port mapping) y registra un log `[bootstrap] env=... listening=...` para confirmar la carga.
+- `NODE_ENV` es sobrescribible en Compose (default `production`). Si aún no usás flujo de producción para pruebas: `NODE_ENV=development` en `.env` o `NODE_ENV=development docker compose up --build`.
+- Healthcheck del servicio: `GET /api/health`. Variables sensibles (`SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`, `ENCRYPTION_KEY`, credenciales SMTP, etc.) deben inyectarse por entorno/`.env`, nunca versionarse.
 
 ## Scripts (`package.json`)
 
@@ -85,11 +104,12 @@ pnpm run start:prod
 
 ## Arquitectura (resumen real)
 
-- **Composición**: `src/main.ts` (bootstrap, CORS, pipes/filtros globales, Swagger) + `src/app.module.ts` (Config global, Throttler, módulos: `Supabase`, `Health`, `Auth`, `Users`, `Roles`, `Seed`, `CertificateRequest`, `Fleet`).
+- **Composición**: `src/main.ts` (bootstrap, CORS, `trust proxy` opcional, pipes/filtros globales, Swagger; escucha en `0.0.0.0:${PORT}` con log `[bootstrap]`) + `src/app.module.ts` (Config global con `envFilePath` según `NODE_ENV`, Throttler, módulos: `Supabase`, `Health`, `Auth`, `Users`, `Roles`, `Seed`, `CertificateRequest`, `Fleet`).
 - **Ubicación de módulos**: `src/<feature>/` (no `src/modules/`).
 - **Patrón en módulos de dominio** (`users`, `certificates`, `fleet`): `domain/` (entidades/enums/contratos + tokens DI `*_REPOSITORY`), `repositories/` (infra Supabase), `dtos/`, `__tests__/`, controllers/services. Otros módulos (`auth`, `roles`, `health`, `mail`, `seed`, `supabase`, `common`) son más simples.
 - **Acceso a datos**: preferentemente vía repositorios + `SupabaseService.getAdminClient()` y `throwMappedSupabaseError`. **Desvío observado**: consultas directas `.from(...)` en algunos servicios (`users.service.ts`, `roles.service.ts`, `seed.service.ts`).
 - **DTOs**: `class-validator`/`class-transformer` + Swagger; sin `BaseDto` común; factories estáticas puntuales (`fromDto`/`fromUser`/`fromRow`).
+- **Docker**: `Dockerfile` + `docker-compose.yml` + `.dockerignore` para ejecución contenerizada del build de producción (`dist`); variables vía `.env`/entorno (plantillas `.env.example`, `.env.production.example`).
 
 ### Estructura de `src/` (alto nivel)
 
@@ -167,7 +187,7 @@ pnpm run test:e2e
 - `src/roles/roles.modules.ts` (nombre no estándar).
 - Sin `BaseDto` común; no todos los DTOs implementan `static from*`.
 - Acceso directo a Supabase en algunos servicios (ver arriba) — refactors solo si se autorizan.
-- No se detectaron `Dockerfile*`/`.env*` versionados en raíz por glob; la documentación de endpoints por endpoint en README no es sistemática.
+- Docker/entornos: existen `Dockerfile`, `docker-compose.yml`, `.dockerignore` y plantillas `.env.example`/`.env.production.example`. Los archivos `.env`/`.env.production` con secretos se ignoran por git. La documentación de endpoints por endpoint en README no es sistemática (usar Swagger/skill).
 
 ## Licencia
 
