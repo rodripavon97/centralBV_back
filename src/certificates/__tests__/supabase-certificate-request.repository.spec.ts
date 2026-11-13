@@ -31,7 +31,6 @@ const listRow = {
   razon_social: 'La Caja Seguros',
   numero_poliza: 'POL-998877',
   patente_vehiculo: null,
-  observaciones: null,
   estado_arancel: 'PENDIENTE' as const,
   monto: null,
   metodo_pago: null,
@@ -245,18 +244,75 @@ describe('SupabaseCertificateRequestRepository', () => {
 
   describe('create', () => {
     it('crea damnificado + constancia y relee la solicitud', async () => {
+      const insertConstancias = vi.fn();
       from.mockImplementation((table: string) => {
         if (table === 'damnificados') {
           return createQueryMock({ data: { id: 'vic-1' }, error: null });
         }
         if (table === 'constancias') {
-          return createQueryMock({ data: { id: ID }, error: null });
+          const q = createQueryMock({ data: { id: ID }, error: null });
+          q.insert = insertConstancias.mockReturnValue(q);
+          return q;
         }
         return createQueryMock({ data: listRow, error: null });
       });
 
       const created = await repo.create(requestData(), 'user-1');
       expect(created.id).toBe(ID);
+      expect(insertConstancias).toHaveBeenCalledWith([
+        expect.not.objectContaining({
+          estado_arancel: 'EXENTO',
+        }),
+      ]);
+    });
+
+    it('registra abono EXENTO al crear destino ACCION_SOCIAL', async () => {
+      const insertConstancias = vi.fn();
+      const accionSocial = {
+        ...requestData(),
+        constancia: {
+          destino: 'ACCION_SOCIAL' as const,
+          razonSocial: 'Acción Social Morón',
+          numeroPoliza: null,
+        },
+      };
+      const exemptRow = {
+        ...listRow,
+        destino: 'ACCION_SOCIAL' as const,
+        razon_social: 'Acción Social Morón',
+        numero_poliza: null,
+        estado_arancel: 'EXENTO' as const,
+        motivo_exento: 'Presentado a acción social',
+        fecha_pago: '2026-10-11T12:00:00.000Z',
+      };
+
+      from.mockImplementation((table: string) => {
+        if (table === 'damnificados') {
+          return createQueryMock({ data: { id: 'vic-1' }, error: null });
+        }
+        if (table === 'constancias') {
+          const q = createQueryMock({ data: { id: ID }, error: null });
+          q.insert = insertConstancias.mockReturnValue(q);
+          return q;
+        }
+        return createQueryMock({ data: exemptRow, error: null });
+      });
+
+      const created = await repo.create(accionSocial, 'user-1');
+      expect(created.abono).toEqual(
+        expect.objectContaining({
+          estado: 'EXENTO',
+          motivoExento: 'Presentado a acción social',
+        }),
+      );
+      expect(insertConstancias).toHaveBeenCalledWith([
+        expect.objectContaining({
+          estado_arancel: 'EXENTO',
+          motivo_exento: 'Presentado a acción social',
+          monto: null,
+          metodo_pago: null,
+        }),
+      ]);
     });
 
     it('revierte el damnificado si falla el insert de constancia', async () => {
@@ -308,6 +364,11 @@ describe('SupabaseCertificateRequestRepository', () => {
                 razon_social: 'r',
                 numero_poliza: 'n',
                 patente_vehiculo: null,
+                estado_arancel: 'PENDIENTE',
+                monto: null,
+                metodo_pago: null,
+                motivo_exento: null,
+                fecha_pago: null,
               },
               error: null,
             });
@@ -329,10 +390,83 @@ describe('SupabaseCertificateRequestRepository', () => {
         expect.objectContaining({ id: ID }),
       );
     });
+
+    it('sincroniza abono EXENTO al cambiar destino a ACCION_SOCIAL', async () => {
+      const updateConstancias = vi.fn();
+      const accionSocial = {
+        ...requestData(),
+        constancia: {
+          destino: 'ACCION_SOCIAL' as const,
+          razonSocial: 'Acción Social Morón',
+          numeroPoliza: null,
+        },
+      };
+      const exemptRow = {
+        ...listRow,
+        destino: 'ACCION_SOCIAL' as const,
+        razon_social: 'Acción Social Morón',
+        numero_poliza: null,
+        estado_arancel: 'EXENTO' as const,
+        motivo_exento: 'Presentado a acción social',
+        fecha_pago: '2026-10-11T12:00:00.000Z',
+      };
+
+      let call = 0;
+      from.mockImplementation((table: string) => {
+        if (table === 'constancias') {
+          call += 1;
+          if (call === 1) {
+            return createQueryMock({
+              data: {
+                damnificado_id: 'vic-1',
+                tipo_constancia: 'VIVIENDA',
+                fecha_actuacion: '2026-10-11',
+                hora_actuacion: '18:20:00',
+                domicilio_hecho: 'x',
+                parte_numero: 'p',
+                localidad: 'l',
+                partido: 'p',
+                motivo: 'm',
+                perdidas: 'p',
+                destino: 'SEGURO',
+                razon_social: 'r',
+                numero_poliza: 'n',
+                patente_vehiculo: null,
+                estado_arancel: 'PENDIENTE',
+                monto: null,
+                metodo_pago: null,
+                motivo_exento: null,
+                fecha_pago: null,
+              },
+              error: null,
+            });
+          }
+          const q = createQueryMock({
+            data: [{ damnificado_id: 'vic-1' }],
+            error: null,
+          });
+          q.update = updateConstancias.mockReturnValue(q);
+          return q;
+        }
+        if (table === 'damnificados') {
+          return createQueryMock({ data: null, error: null });
+        }
+        return createQueryMock({ data: exemptRow, error: null });
+      });
+
+      const updated = await repo.updatePending(ID, accionSocial);
+      expect(updated?.abono?.estado).toBe('EXENTO');
+      expect(updateConstancias).toHaveBeenCalledWith(
+        expect.objectContaining({
+          estado_arancel: 'EXENTO',
+          motivo_exento: 'Presentado a acción social',
+        }),
+      );
+    });
   });
 
-  describe('cancelPending / markAsRealized / signRequest', () => {
-    it('cancela si sigue PENDIENTE', async () => {
+  describe('cancelUndelivered / markAsRealized / signRequest', () => {
+    it('cancela si no está entregada ni cancelada', async () => {
       let call = 0;
       from.mockImplementation(() => {
         call += 1;
@@ -344,22 +478,22 @@ describe('SupabaseCertificateRequestRepository', () => {
           error: null,
         });
       });
-      await expect(repo.cancelPending(ID, 'duplicada')).resolves.toEqual(
+      await expect(repo.cancelUndelivered(ID, 'duplicada')).resolves.toEqual(
         expect.objectContaining({ estado: 'CANCELADA' }),
       );
     });
 
-    it('cancelPending retorna null si no hay filas', async () => {
+    it('cancelUndelivered retorna null si no hay filas', async () => {
       from.mockReturnValue(createQueryMock({ data: [], error: null }));
-      await expect(repo.cancelPending(ID, 'x')).resolves.toBeNull();
+      await expect(repo.cancelUndelivered(ID, 'x')).resolves.toBeNull();
     });
 
     it('markAsRealized retorna true/false según filas afectadas', async () => {
       from.mockReturnValue(createQueryMock({ data: [{ id: ID }], error: null }));
-      await expect(repo.markAsRealized(ID, 'obs')).resolves.toBe(true);
+      await expect(repo.markAsRealized(ID)).resolves.toBe(true);
 
       from.mockReturnValue(createQueryMock({ data: [], error: null }));
-      await expect(repo.markAsRealized(ID, null)).resolves.toBe(false);
+      await expect(repo.markAsRealized(ID)).resolves.toBe(false);
     });
 
     it('signRequest retorna true/false según filas afectadas', async () => {

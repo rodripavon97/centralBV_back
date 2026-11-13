@@ -94,7 +94,6 @@ CREATE TABLE IF NOT EXISTS public.constancias (
   razon_social       TEXT,
   numero_poliza      TEXT,
   patente_vehiculo   TEXT,
-  observaciones      TEXT,
 
   estado             public.estado_constancia NOT NULL DEFAULT 'PENDIENTE',
   estado_arancel     public.estado_arancel NOT NULL DEFAULT 'PENDIENTE',
@@ -142,9 +141,9 @@ ALTER TABLE public.constancias ADD COLUMN IF NOT EXISTS fecha_pago TIMESTAMP WIT
 ALTER TABLE public.constancias ADD COLUMN IF NOT EXISTS retirado_por_nombre TEXT;
 ALTER TABLE public.constancias ADD COLUMN IF NOT EXISTS retirado_por_dni TEXT;
 ALTER TABLE public.constancias ADD COLUMN IF NOT EXISTS razon_social TEXT;
-ALTER TABLE public.constancias ADD COLUMN IF NOT EXISTS observaciones TEXT;
--- descripcion del siniestro ya no se usa (la vista se dropea al inicio del script)
+-- descripcion / observaciones ya no se usan (la vista se dropea al inicio del script)
 ALTER TABLE public.constancias DROP COLUMN IF EXISTS descripcion;
+ALTER TABLE public.constancias DROP COLUMN IF EXISTS observaciones;
 
 -- Compatibilidad: EXENTO antes guardaba monto 0
 UPDATE public.constancias
@@ -199,7 +198,6 @@ SELECT
   c.razon_social,
   c.numero_poliza,
   c.patente_vehiculo,
-  c.observaciones,
   c.estado_arancel,
   c.monto,
   c.metodo_pago,

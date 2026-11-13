@@ -51,7 +51,6 @@ const requestFixture = (
     numeroPoliza: 'POL-998877',
   },
   abono,
-  observaciones: null,
   motivoCancelacion: null,
   canceladoEn: null,
   retiradoEn: null,
@@ -99,7 +98,7 @@ describe('CertificateRequestService', () => {
     findById: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     updatePending: ReturnType<typeof vi.fn>;
-    cancelPending: ReturnType<typeof vi.fn>;
+    cancelUndelivered: ReturnType<typeof vi.fn>;
     markAsRealized: ReturnType<typeof vi.fn>;
     signRequest: ReturnType<typeof vi.fn>;
     addPayment: ReturnType<typeof vi.fn>;
@@ -113,7 +112,7 @@ describe('CertificateRequestService', () => {
       findById: vi.fn(),
       create: vi.fn(),
       updatePending: vi.fn(),
-      cancelPending: vi.fn(),
+      cancelUndelivered: vi.fn(),
       markAsRealized: vi.fn(),
       signRequest: vi.fn(),
       addPayment: vi.fn(),
@@ -282,6 +281,44 @@ describe('CertificateRequestService', () => {
         BadRequestException,
       );
     });
+
+    it('creates ACCION_SOCIAL requests without a policy number', async () => {
+      const body = dto(
+        '2026-10-11',
+        '18:20',
+        'VIVIENDA',
+        'ACCION_SOCIAL',
+        null,
+      );
+      body.constancia.razonSocial = 'Acción Social Morón';
+      repo.create.mockResolvedValue({
+        ...requestFixture(),
+        constancia: {
+          destino: 'ACCION_SOCIAL',
+          razonSocial: 'Acción Social Morón',
+          numeroPoliza: null,
+        },
+        abono: {
+          estado: 'EXENTO',
+          monto: null,
+          metodoPago: null,
+          fechaPago: '2026-10-11T21:20:00Z',
+          motivoExento: 'Presentado a acción social',
+        },
+      });
+
+      await service.create(body, 'user-1');
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          constancia: expect.objectContaining({
+            destino: 'ACCION_SOCIAL',
+            numeroPoliza: null,
+          }),
+        }),
+        'user-1',
+      );
+    });
   });
 
   describe('findById', () => {
@@ -327,31 +364,40 @@ describe('CertificateRequestService', () => {
     });
   });
 
-  describe('cancelRequest (US13)', () => {
-    it('cancels a pending request with its reason', async () => {
-      repo.findById.mockResolvedValue(requestFixture());
-      repo.cancelPending.mockResolvedValue({
-        ...requestFixture('CANCELADA'),
-        motivoCancelacion: 'No corresponde',
-      });
+  describe('cancelRequest', () => {
+    it.each(['PENDIENTE', 'REALIZADA', 'FIRMADA'] as const)(
+      'cancels a %s request with its reason',
+      async (estado) => {
+        repo.findById.mockResolvedValue(requestFixture(estado));
+        repo.cancelUndelivered.mockResolvedValue({
+          ...requestFixture('CANCELADA'),
+          motivoCancelacion: 'No corresponde',
+        });
 
-      const result = await service.cancelRequest(ID, 'No corresponde');
+        const result = await service.cancelRequest(ID, 'No corresponde');
 
-      expect(repo.cancelPending).toHaveBeenCalledWith(ID, 'No corresponde');
-      expect(result.estado).toBe('CANCELADA');
-    });
+        expect(repo.cancelUndelivered).toHaveBeenCalledWith(
+          ID,
+          'No corresponde',
+        );
+        expect(result.estado).toBe('CANCELADA');
+      },
+    );
 
-    it('does not allow cancelling a signed request', async () => {
+    it.each(['RETIRADA', 'CANCELADA'] as const)(
+      'does not allow cancelling a %s request',
+      async (estado) => {
+        repo.findById.mockResolvedValue(requestFixture(estado));
+        await expect(
+          service.cancelRequest(ID, 'No corresponde'),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(repo.cancelUndelivered).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns conflict if the repo could not cancel', async () => {
       repo.findById.mockResolvedValue(requestFixture('FIRMADA'));
-      await expect(
-        service.cancelRequest(ID, 'No corresponde'),
-      ).rejects.toBeInstanceOf(ConflictException);
-      expect(repo.cancelPending).not.toHaveBeenCalled();
-    });
-
-    it('returns conflict if it stopped being pending when cancelling', async () => {
-      repo.findById.mockResolvedValue(requestFixture());
-      repo.cancelPending.mockResolvedValue(null);
+      repo.cancelUndelivered.mockResolvedValue(null);
       await expect(
         service.cancelRequest(ID, 'No corresponde'),
       ).rejects.toBeInstanceOf(ConflictException);
@@ -366,12 +412,10 @@ describe('CertificateRequestService', () => {
         .mockResolvedValueOnce(realized);
       repo.markAsRealized.mockResolvedValue(true);
 
-      await expect(
-        service.realizeRequest(ID, 'Nota de prueba'),
-      ).resolves.toMatchObject({
+      await expect(service.realizeRequest(ID)).resolves.toMatchObject({
         estado: 'REALIZADA',
       });
-      expect(repo.markAsRealized).toHaveBeenCalledWith(ID, 'Nota de prueba');
+      expect(repo.markAsRealized).toHaveBeenCalledWith(ID);
     });
 
     it.each(['REALIZADA', 'FIRMADA', 'RETIRADA', 'CANCELADA'] as const)(

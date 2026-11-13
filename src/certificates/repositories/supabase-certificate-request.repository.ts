@@ -17,6 +17,7 @@ import {
   CertificateDestination,
   PaymentStatus,
   PaymentMethod,
+  MOTIVO_EXENTO_ACCION_SOCIAL,
 } from '../domain/certificate-request.enums.js';
 import { paginationRange } from '../../common/utils/pagination.utils.js';
 import { throwMappedSupabaseError } from '../../supabase/supabase-error.js';
@@ -39,7 +40,6 @@ interface CertificateRequestRow {
   razon_social: string | null;
   numero_poliza: string | null;
   patente_vehiculo: string | null;
-  observaciones: string | null;
   estado_arancel: PaymentStatus;
   monto: number | null;
   metodo_pago: PaymentMethod | null;
@@ -55,6 +55,15 @@ interface CertificateRequestRow {
   nombre: string;
   telefono: string | null;
 }
+
+/** Fee columns set when destino is Acción Social (auto EXENTO). */
+const accionSocialExemptionColumns = (fechaPago: string) => ({
+  estado_arancel: 'EXENTO' as const,
+  motivo_exento: MOTIVO_EXENTO_ACCION_SOCIAL,
+  monto: null,
+  metodo_pago: null,
+  fecha_pago: fechaPago,
+});
 
 /** Snapshot of constancia columns used to compensate a failed victim update. */
 interface CertificateSnapshot {
@@ -235,11 +244,18 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
       .single();
     if (victimError) throwMappedSupabaseError(victimError);
 
+    const now = new Date().toISOString();
+    const exemption =
+      data.constancia.destino === 'ACCION_SOCIAL'
+        ? accionSocialExemptionColumns(now)
+        : {};
+
     const { data: certificate, error } = await this.db
       .from('constancias')
       .insert([
         {
           ...certificateColumns(data),
+          ...exemption,
           damnificado_id: victim.id,
           creado_por: createdBy,
         },
@@ -267,7 +283,7 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
     const { data: prev, error: prevError } = await this.db
       .from('constancias')
       .select(
-        'damnificado_id, tipo_constancia, fecha_actuacion, hora_actuacion, domicilio_hecho, parte_numero, localidad, partido, motivo, perdidas, destino, razon_social, numero_poliza, patente_vehiculo',
+        'damnificado_id, tipo_constancia, fecha_actuacion, hora_actuacion, domicilio_hecho, parte_numero, localidad, partido, motivo, perdidas, destino, razon_social, numero_poliza, patente_vehiculo, estado_arancel, monto, metodo_pago, motivo_exento, fecha_pago',
       )
       .eq('id', id)
       .eq('estado', 'PENDIENTE')
@@ -275,14 +291,27 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
     if (prevError) throwMappedSupabaseError(prevError);
     if (!prev) return null;
 
-    const snapshot = prev as CertificateSnapshot;
+    const snapshot = prev as CertificateSnapshot & {
+      estado_arancel: PaymentStatus;
+      monto: number | null;
+      metodo_pago: PaymentMethod | null;
+      motivo_exento: string | null;
+      fecha_pago: string | null;
+    };
+
+    const now = new Date().toISOString();
+    const exemption =
+      data.constancia.destino === 'ACCION_SOCIAL'
+        ? accionSocialExemptionColumns(now)
+        : {};
 
     // Status filter is on the same UPDATE: if someone cancelled an instant earlier, nothing changes.
     const { data: rows, error } = await this.db
       .from('constancias')
       .update({
         ...certificateColumns(data),
-        actualizado_en: new Date().toISOString(),
+        ...exemption,
+        actualizado_en: now,
       })
       .eq('id', id)
       .eq('estado', 'PENDIENTE')
@@ -311,6 +340,11 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
           razon_social: snapshot.razon_social,
           numero_poliza: snapshot.numero_poliza,
           patente_vehiculo: snapshot.patente_vehiculo,
+          estado_arancel: snapshot.estado_arancel,
+          monto: snapshot.monto,
+          metodo_pago: snapshot.metodo_pago,
+          motivo_exento: snapshot.motivo_exento,
+          fecha_pago: snapshot.fecha_pago,
           actualizado_en: new Date().toISOString(),
         })
         .eq('id', id);
@@ -320,8 +354,8 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
     return this.findById(id);
   }
 
-  /** Cancels only if still PENDIENTE; returns null otherwise. */
-  public async cancelPending(id: string, reason: string) {
+  /** Cancels if not RETIRADA or already CANCELADA; returns null otherwise. */
+  public async cancelUndelivered(id: string, reason: string) {
     const now = new Date().toISOString();
     const { data, error } = await this.db
       .from('constancias')
@@ -332,7 +366,7 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
         actualizado_en: now,
       })
       .eq('id', id)
-      .eq('estado', 'PENDIENTE')
+      .not('estado', 'in', '(RETIRADA,CANCELADA)')
       .select('id');
     if (error) throwMappedSupabaseError(error);
     if (!data?.length) return null;
@@ -341,13 +375,12 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
   }
 
   /** Marks as REALIZADA only if still PENDIENTE (PENDIENTE → REALIZADA). */
-  public async markAsRealized(id: string, observations: string | null) {
+  public async markAsRealized(id: string) {
     const now = new Date().toISOString();
     const { data, error } = await this.db
       .from('constancias')
       .update({
         estado: 'REALIZADA',
-        observaciones: observations,
         actualizado_en: now,
       })
       .eq('id', id)
@@ -456,7 +489,6 @@ export class SupabaseCertificateRequestRepository implements CertificateRequestR
               fechaPago: row.fecha_pago ?? row.creado_en,
               motivoExento: row.motivo_exento,
             },
-      observaciones: row.observaciones,
       motivoCancelacion: row.motivo_cancelacion,
       canceladoEn: row.cancelado_en,
       retiradoEn: row.retirado_en,

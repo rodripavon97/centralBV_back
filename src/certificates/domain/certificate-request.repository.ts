@@ -66,11 +66,8 @@ export interface CertificateRequestRepository {
     id: string,
     data: CertificateRequestData,
   ): Promise<CertificateRequest | null>;
-  /** Returns false if the request is not in PENDIENTE. Persists observaciones. */
-  markAsRealized(
-    id: string,
-    observations: string | null,
-  ): Promise<boolean>;
+  /** Returns false if the request is not in PENDIENTE. */
+  markAsRealized(id: string): Promise<boolean>;
   /** Returns false if the request is not in REALIZADA. */
   signRequest(id: string): Promise<boolean>;
   /** Returns null if not FIRMADA or without payment (ABONADO/EXENTO). */
@@ -78,8 +75,11 @@ export interface CertificateRequestRepository {
     id: string,
     data: DeliveryData,
   ): Promise<CertificateRequest | null>;
-  /** Returns null if the request is no longer pending. */
-  cancelPending(id: string, reason: string): Promise<CertificateRequest | null>;
+  /** Returns null if the request is already cancelled or delivered (RETIRADA). */
+  cancelUndelivered(
+    id: string,
+    reason: string,
+  ): Promise<CertificateRequest | null>;
   /** Returns null if the request is cancelled or delivered (RETIRADA). */
   addPayment(id: string, payment: Payment): Promise<CertificateRequest | null>;
 }

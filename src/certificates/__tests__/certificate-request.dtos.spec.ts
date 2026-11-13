@@ -7,7 +7,6 @@ import { ListCertificateRequestsDto } from '../dtos/list-certificate-requests.dt
 import { ListCompletedCertificateRequestsDto } from '../dtos/list-completed-certificate-requests.dto.js';
 import { AddPaymentDto } from '../dtos/add-payment.dto.js';
 import { DeliverCertificateRequestDto } from '../dtos/deliver-certificate-request.dto.js';
-import { RealizeCertificateRequestDto } from '../dtos/realize-certificate-request.dto.js';
 import { ACTIVE_REQUEST_STATUSES } from '../domain/certificate-request.enums.js';
 
 const validPayload = () => ({
@@ -216,35 +215,5 @@ describe('DeliverCertificateRequestDto', () => {
     expect(errors.map((e) => e.property)).toEqual(
       expect.arrayContaining(['nombreCompleto', 'dni']),
     );
-  });
-});
-
-describe('RealizeCertificateRequestDto', () => {
-  it('accepts empty body and defaults observaciones to null', async () => {
-    const dto = plainToInstance(RealizeCertificateRequestDto, {});
-    expect(await validate(dto)).toEqual([]);
-    expect(dto.observaciones).toBeNull();
-  });
-
-  it('trims observaciones and turns blank into null', async () => {
-    const dto = plainToInstance(RealizeCertificateRequestDto, {
-      observaciones: '  Se acompañan fotos.  ',
-    });
-    expect(await validate(dto)).toEqual([]);
-    expect(dto.observaciones).toBe('Se acompañan fotos.');
-
-    const blank = plainToInstance(RealizeCertificateRequestDto, {
-      observaciones: '   ',
-    });
-    expect(await validate(blank)).toEqual([]);
-    expect(blank.observaciones).toBeNull();
-  });
-
-  it('rejects observaciones longer than 2000 characters', async () => {
-    const dto = plainToInstance(RealizeCertificateRequestDto, {
-      observaciones: 'x'.repeat(2001),
-    });
-    const errors = await validate(dto);
-    expect(errors.some((e) => e.property === 'observaciones')).toBe(true);
   });
 });

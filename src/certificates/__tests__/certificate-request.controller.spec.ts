@@ -7,7 +7,6 @@ import { CreateCertificateRequestDto } from '../dtos/create-certificate-request.
 import { ListCertificateRequestsDto } from '../dtos/list-certificate-requests.dto.js';
 import { ListCompletedCertificateRequestsDto } from '../dtos/list-completed-certificate-requests.dto.js';
 import { CancelCertificateRequestDto } from '../dtos/cancel-certificate-request.dto.js';
-import { RealizeCertificateRequestDto } from '../dtos/realize-certificate-request.dto.js';
 import { AddPaymentDto } from '../dtos/add-payment.dto.js';
 import { DeliverCertificateRequestDto } from '../dtos/deliver-certificate-request.dto.js';
 
@@ -109,14 +108,11 @@ describe('CertificateRequestController', () => {
     expect(service.cancelRequest).toHaveBeenCalledWith(ID, 'No corresponde');
   });
 
-  it('realize marks REALIZADA, passes observations to the PDF and returns it', async () => {
-    const dto = Object.assign(new RealizeCertificateRequestDto(), {
-      observaciones: 'Nota',
-    });
+  it('realize marks REALIZADA and returns the PDF', async () => {
     service.realizeRequest.mockResolvedValue({ id: ID, estado: 'REALIZADA' });
-    const result = await controller.realize(ID, dto);
-    expect(service.realizeRequest).toHaveBeenCalledWith(ID, 'Nota');
-    expect(pdfService.generatePdf).toHaveBeenCalledWith(ID, 'Nota');
+    const result = await controller.realize(ID);
+    expect(service.realizeRequest).toHaveBeenCalledWith(ID);
+    expect(pdfService.generatePdf).toHaveBeenCalledWith(ID);
     expect(result).toBeInstanceOf(StreamableFile);
   });
 

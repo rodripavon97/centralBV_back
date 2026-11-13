@@ -29,8 +29,6 @@ export interface CertificatePdfViewModel {
   reportNumber: string;
   dateDisplay: string;
   time: string;
-  /** Printed below date/time when non-empty. */
-  observations: string | null;
   vehiclePlate: string | null;
   policyNumber: string | null;
   footerDate: string;
@@ -57,14 +55,10 @@ export function formatFooterDate(now = new Date()): string {
   return `JOSÉ C. PAZ, ${day} DE ${MONTHS[month - 1]} DE ${year}.`;
 }
 
-/**
- * Maps a certificate request aggregate to the PDF view model.
- * @param observationsOverride when provided (including null), replaces stored notes
- */
+/** Maps a certificate request aggregate to the PDF view model. */
 export function toCertificatePdfViewModel(
   request: CertificateRequest,
   now = new Date(),
-  observationsOverride?: string | null,
 ): CertificatePdfViewModel {
   const { damnificado: d, siniestro: s, constancia: c } = request;
   const dateDisplay = formatDateDisplay(s.fecha);
@@ -73,13 +67,6 @@ export function toCertificatePdfViewModel(
     s.tipo === 'VEHICULAR' && s.patenteVehiculo ? s.patenteVehiculo : null;
   const policyNumber =
     c.destino === 'SEGURO' && c.numeroPoliza ? c.numeroPoliza : null;
-  const observations =
-    observationsOverride !== undefined
-      ? observationsOverride
-      : request.observaciones;
-  const observationsText = observations?.trim()
-    ? observations.trim()
-    : null;
 
   return {
     applicant,
@@ -93,7 +80,6 @@ export function toCertificatePdfViewModel(
     reportNumber: s.numeroParte,
     dateDisplay,
     time: s.hora,
-    observations: observationsText,
     vehiclePlate,
     policyNumber,
     footerDate: formatFooterDate(now),
