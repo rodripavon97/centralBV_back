@@ -9,12 +9,21 @@ import { SupabaseRevisionRepository } from './repositories/supabase-revision.rep
 import { VEHICLE_CATALOG_REPOSITORY } from './domain/vehicle-catalog.repository.js';
 import { EMERGENCY_VEHICLE_REPOSITORY } from './domain/emergency-vehicle.repository.js';
 import { REVISION_REPOSITORY } from './domain/revision.repository.js';
+import { CompartmentService } from './compartment.service.js';
+import { CompartmentController } from './compartment.controller.js';
+import { SupabaseCompartmentRepository } from './repositories/supabase-compartment.repository.js';
+import { COMPARTMENT_REPOSITORY } from './domain/compartment.repository.js';
 
 @Module({
-  controllers: [FleetController, VehicleCatalogController],
+  controllers: [
+    FleetController,
+    VehicleCatalogController,
+    CompartmentController,
+  ],
   providers: [
     FleetService,
     VehicleCatalogService,
+    CompartmentService,
     {
       provide: VEHICLE_CATALOG_REPOSITORY,
       useClass: SupabaseVehicleCatalogRepository,
@@ -26,6 +35,10 @@ import { REVISION_REPOSITORY } from './domain/revision.repository.js';
     {
       provide: REVISION_REPOSITORY,
       useClass: SupabaseRevisionRepository,
+    },
+    {
+      provide: COMPARTMENT_REPOSITORY,
+      useClass: SupabaseCompartmentRepository,
     },
   ],
 })
