@@ -14,7 +14,6 @@ describe('buildCertificatePdf', () => {
     reportNumber: 'P-2026-0142',
     dateDisplay: '11/10/2026',
     time: '18:20',
-    observations: 'Se acompañan fotografías.',
     vehiclePlate: null,
     policyNumber: 'POL-998877',
     footerDate: 'JOSÉ C. PAZ, 11 DE OCTUBRE DE 2026.',
@@ -28,10 +27,9 @@ describe('buildCertificatePdf', () => {
     expect(buffer.length).toBeGreaterThan(500);
   });
 
-  it('incluye patente y omite observaciones vacías sin fallar', () => {
+  it('incluye patente sin fallar', () => {
     const buffer = buildCertificatePdf({
       ...viewModel(),
-      observations: null,
       vehiclePlate: 'AB123CD',
       policyNumber: null,
     });

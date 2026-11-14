@@ -28,15 +28,15 @@ import {
 } from '../common/utils/date.utils.js';
 import { buildPaginatedResponse } from '../common/utils/pagination.utils.js';
 
-const NOT_MODIFIABLE =
-  'Solo se pueden editar o cancelar solicitudes pendientes';
+const NOT_MODIFIABLE = 'Solo se pueden editar solicitudes pendientes';
+const NOT_CANCELLABLE =
+  'Solo se pueden cancelar solicitudes no entregadas';
 const NOT_REALIZABLE = 'Solo se pueden realizar solicitudes en estado PENDIENTE';
 const NOT_SIGNABLE = 'Solo se pueden firmar solicitudes en estado REALIZADA';
 const NOT_PAYABLE =
   'No se puede registrar o editar el abono de una solicitud cancelada o entregada';
 const NOT_DELIVERABLE =
   'Solo se pueden entregar solicitudes firmadas con abono registrado';
-const INVALID_TRANSITION = 'La transición de estado no es válida';
 
 /** Application rules for certificate request lifecycle and payments. */
 @Injectable()
@@ -97,27 +97,24 @@ export class CertificateRequestService {
     return updated;
   }
 
-  /** US13: cancel requires a reason and leaves the request in CANCELADA. */
+  /** Cancel requires a reason and leaves an undelivered request in CANCELADA. */
   async cancelRequest(id: string, reason: string) {
-    const request = await this.getModifiable(id);
+    const request = await this.findById(id);
     if (!canAdvanceTo(request.estado, 'CANCELADA')) {
-      throw new ConflictException(INVALID_TRANSITION);
+      throw new ConflictException(NOT_CANCELLABLE);
     }
-    const cancelled = await this.repo.cancelPending(id, reason);
-    if (!cancelled) throw new ConflictException(NOT_MODIFIABLE);
+    const cancelled = await this.repo.cancelUndelivered(id, reason);
+    if (!cancelled) throw new ConflictException(NOT_CANCELLABLE);
     return cancelled;
   }
 
-  /**
-   * Realization requires PENDIENTE status and leaves the request in REALIZADA.
-   * Persists optional observaciones for the certificate PDF.
-   */
-  async realizeRequest(id: string, observations: string | null = null) {
+  /** Realization requires PENDIENTE status and leaves the request in REALIZADA. */
+  async realizeRequest(id: string) {
     const request = await this.findById(id);
     if (!canAdvanceTo(request.estado, 'REALIZADA')) {
       throw new ConflictException(NOT_REALIZABLE);
     }
-    const realized = await this.repo.markAsRealized(id, observations);
+    const realized = await this.repo.markAsRealized(id);
     if (!realized) throw new ConflictException(NOT_REALIZABLE);
     return this.findById(id);
   }

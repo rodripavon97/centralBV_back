@@ -27,24 +27,16 @@ export class CertificatePdfService {
     private readonly repo: CertificateRequestRepository,
   ) {}
 
-  /**
-   * Loads the request, checks status, and returns PDF buffer + filename.
-   * @param observations optional text under OBSERVACIONES (defaults to stored value)
-   */
+  /** Loads the request, checks status, and returns PDF buffer + filename. */
   async generatePdf(
     id: string,
-    observations?: string | null,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const request = await this.repo.findById(id);
     if (!request) throw new NotFoundException('La solicitud no existe');
     if (!PDF_ALLOWED_STATUSES.includes(request.estado)) {
       throw new ConflictException(PDF_NOT_ALLOWED);
     }
-    const view = toCertificatePdfViewModel(
-      request,
-      new Date(),
-      observations !== undefined ? observations : request.observaciones,
-    );
+    const view = toCertificatePdfViewModel(request);
     return {
       buffer: buildCertificatePdf(view),
       filename: view.filename,

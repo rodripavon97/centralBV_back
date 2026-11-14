@@ -29,7 +29,6 @@ import { CreateCertificateRequestDto } from './dtos/create-certificate-request.d
 import { ListCertificateRequestsDto } from './dtos/list-certificate-requests.dto.js';
 import { ListCompletedCertificateRequestsDto } from './dtos/list-completed-certificate-requests.dto.js';
 import { CancelCertificateRequestDto } from './dtos/cancel-certificate-request.dto.js';
-import { RealizeCertificateRequestDto } from './dtos/realize-certificate-request.dto.js';
 import { AddPaymentDto } from './dtos/add-payment.dto.js';
 import { DeliverCertificateRequestDto } from './dtos/deliver-certificate-request.dto.js';
 
@@ -117,11 +116,12 @@ export class CertificateRequestController {
     return this.service.updatePending(id, dto);
   }
 
-  /** US13: cancel a pending request with a reason. */
+  /** Cancel an undelivered request with a reason. */
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Patch(':id/cancelar')
   @ApiOperation({
-    summary: 'Cancel a pending request with a reason (US13)',
+    summary:
+      'Cancel an undelivered request (PENDIENTE, REALIZADA or FIRMADA) with a reason',
   })
   async cancel(
     @Param('id', ParseUUIDPipe) id: string,
@@ -130,9 +130,7 @@ export class CertificateRequestController {
     return this.service.cancelRequest(id, dto.motivo);
   }
 
-  /**
-   * Mark pending as REALIZADA (optional observaciones) and return the PDF.
-   */
+  /** Mark pending as REALIZADA and return the PDF. */
   @Roles('ADMINISTRATIVO', 'ADMIN')
   @Patch(':id/generar-constancia')
   @Header('Content-Type', 'application/pdf')
@@ -143,14 +141,9 @@ export class CertificateRequestController {
   })
   async realize(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: RealizeCertificateRequestDto,
   ): Promise<StreamableFile> {
-    const observations = dto.observaciones ?? null;
-    await this.service.realizeRequest(id, observations);
-    const { buffer, filename } = await this.pdfService.generatePdf(
-      id,
-      observations,
-    );
+    await this.service.realizeRequest(id);
+    const { buffer, filename } = await this.pdfService.generatePdf(id);
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `inline; filename="${filename}"`,

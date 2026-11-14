@@ -1,8 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
+import type { ISendMailOptions } from '@nestjs-modules/mailer';
 import { MailBuilder } from './builders/mail.builder.js';
 import { WelcomeEmailBuilder } from './builders/welcome-email.builder.js';
 import { buildRecoveryEmailHtml } from './templates/welcome-email.template.js';
+
+/** Formats nodemailer `to` for log messages (string | Address | array). */
+function formatRecipients(to: ISendMailOptions['to']): string {
+  if (to == null) return '';
+  if (typeof to === 'string') return to;
+  if (Array.isArray(to)) {
+    return to
+      .map((entry) => (typeof entry === 'string' ? entry : entry.address))
+      .join(', ');
+  }
+  return to.address;
+}
 
 @Injectable()
 export class MailService {
@@ -13,13 +26,14 @@ export class MailService {
   /** Envía cualquier correo armado con un builder. */
   async send(mail: MailBuilder) {
     const options = mail.build();
+    const recipients = formatRecipients(options.to);
 
     try {
       await this.mailerService.sendMail(options);
-      this.logger.log(`✅ Correo enviado a ${options.to}`);
+      this.logger.log(`✅ Correo enviado a ${recipients}`);
     } catch (error) {
       this.logger.error(
-        `❌ Error enviando correo a ${options.to}: ${(error as Error).message}`,
+        `❌ Error enviando correo a ${recipients}: ${(error as Error).message}`,
       );
     }
   }

@@ -6,6 +6,9 @@ export type AccidentType = (typeof ACCIDENT_TYPES)[number];
 export const CERTIFICATE_DESTINATIONS = ['SEGURO', 'ACCION_SOCIAL'] as const;
 export type CertificateDestination = (typeof CERTIFICATE_DESTINATIONS)[number];
 
+/** Auto-exemption reason when the certificate is presented to Acción Social. */
+export const MOTIVO_EXENTO_ACCION_SOCIAL = 'Presentado a acción social';
+
 /** Lifecycle statuses of a certificate request. */
 export const REQUEST_STATUSES = [
   'PENDIENTE',

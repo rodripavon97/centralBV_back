@@ -33,7 +33,6 @@ const base = (): CertificateRequest => ({
     numeroPoliza: 'POL-998877',
   },
   abono: null,
-  observaciones: null,
   motivoCancelacion: null,
   canceladoEn: null,
   retiradoEn: null,
@@ -58,25 +57,9 @@ describe('certificate-pdf.mapper', () => {
     expect(view.time).toBe('18:20');
     expect(view.policyNumber).toBe('POL-998877');
     expect(view.vehiclePlate).toBeNull();
-    expect(view.observations).toBeNull();
     expect(view.filename).toBe(
       'Constancia_Lucía_Fernández_11-10-2026.pdf',
     );
-  });
-
-  it('uses persisted observations or the override', () => {
-    const request = base();
-    request.observaciones = 'Guardada en DB';
-    expect(toCertificatePdfViewModel(request).observations).toBe(
-      'Guardada en DB',
-    );
-    expect(
-      toCertificatePdfViewModel(request, new Date(), 'Solo para esta impresión')
-        .observations,
-    ).toBe('Solo para esta impresión');
-    expect(
-      toCertificatePdfViewModel(request, new Date(), null).observations,
-    ).toBeNull();
   });
 
   it('includes vehicle plate for VEHICULAR and omits policy for ACCION_SOCIAL', () => {

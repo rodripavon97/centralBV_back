@@ -1,6 +1,6 @@
 // A certificate request is a row in `constancias` before (or after) the
 // certificate is generated. Full lifecycle: PENDIENTE → REALIZADA → FIRMADA → RETIRADA,
-// or PENDIENTE → CANCELADA. See src/db/constancias.sql.
+// or (PENDIENTE | REALIZADA | FIRMADA) → CANCELADA. See src/db/certificates.sql.
 
 import {
   AccidentType,
@@ -60,8 +60,6 @@ export interface CertificateRequest {
   siniestro: Accident;
   constancia: Certificate;
   abono: Payment | null;
-  /** Notes captured when marking as REALIZADA; shown on the certificate PDF. */
-  observaciones: string | null;
 
   motivoCancelacion: string | null;
   canceladoEn: string | null;
@@ -70,14 +68,14 @@ export interface CertificateRequest {
   retiradoPorDni: string | null;
 }
 
-/** Only a pending request can be edited or cancelled (US13). */
+/** Only a pending request can be edited (US13). */
 export const isModifiable = (status: RequestStatus) => status === 'PENDIENTE';
 
 /**
  * Valid lifecycle transitions:
  * - PENDIENTE → REALIZADA | CANCELADA
- * - REALIZADA → FIRMADA
- * - FIRMADA → RETIRADA
+ * - REALIZADA → FIRMADA | CANCELADA
+ * - FIRMADA → RETIRADA | CANCELADA
  * Staying in the same status is considered valid (idempotency).
  */
 export const isStatusTransitionValid = (
@@ -92,9 +90,9 @@ export const isStatusTransitionValid = (
     case 'PENDIENTE':
       return newStatus === 'REALIZADA' || newStatus === 'CANCELADA';
     case 'REALIZADA':
-      return newStatus === 'FIRMADA';
+      return newStatus === 'FIRMADA' || newStatus === 'CANCELADA';
     case 'FIRMADA':
-      return newStatus === 'RETIRADA';
+      return newStatus === 'RETIRADA' || newStatus === 'CANCELADA';
     default:
       return false;
   }

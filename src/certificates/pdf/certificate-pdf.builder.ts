@@ -174,21 +174,6 @@ export function buildCertificatePdf(data: CertificatePdfViewModel): Buffer {
     doc.setFont('helvetica', 'normal');
     doc.text(`${data.time} HS.`, col1 + 15, y);
 
-    if (data.observations) {
-      y += 10;
-      doc.setFont('helvetica', 'bold');
-      doc.text('OBSERVACIONES: ', col1, y);
-      doc.setFont('helvetica', 'normal');
-      const obsLines = doc.splitTextToSize(
-        data.observations,
-        width - 40 - 35,
-      ) as string[];
-      doc.text(obsLines, col1 + 35, y);
-      if (obsLines.length > 1) {
-        y += (obsLines.length - 1) * 5;
-      }
-    }
-
     y += 20;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);

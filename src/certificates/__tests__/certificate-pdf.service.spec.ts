@@ -40,7 +40,6 @@ const request = (
     numeroPoliza: 'POL-998877',
   },
   abono: null,
-  observaciones: 'Se acompañan fotos',
   motivoCancelacion: null,
   canceladoEn: null,
   retiradoEn: null,
@@ -90,10 +89,4 @@ describe('CertificatePdfService', () => {
       expect(filename).toMatch(/\.pdf$/);
     },
   );
-
-  it('accepts observations as a parameter', async () => {
-    repo.findById.mockResolvedValue(request('REALIZADA'));
-    const { buffer } = await service.generatePdf(ID, 'Texto bajo OBSERVACIONES');
-    expect(buffer.subarray(0, 4).toString('utf8')).toBe('%PDF');
-  });
 });

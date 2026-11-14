@@ -23,9 +23,11 @@ describe('RolesGuard', () => {
   });
 
   it('permite el acceso cuando el usuario tiene uno de los roles requeridos', () => {
-    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['ADMIN']);
+    const getAllAndOverride = vi
+      .spyOn(reflector, 'getAllAndOverride')
+      .mockReturnValue(['ADMIN']);
     expect(guard.canActivate(createContext({ roles: ['ADMIN'] }))).toBe(true);
-    expect(reflector.getAllAndOverride).toHaveBeenCalledWith(ROLES_KEY, [
+    expect(getAllAndOverride).toHaveBeenCalledWith(ROLES_KEY, [
       expect.anything(),
       expect.anything(),
     ]);
