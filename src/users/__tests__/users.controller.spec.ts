@@ -9,6 +9,8 @@ describe('UsersController', () => {
   let findAllFn: ReturnType<typeof vi.fn>;
   let findOneFn: ReturnType<typeof vi.fn>;
   let updateUserFn: ReturnType<typeof vi.fn>;
+  let deactivateUserFn: ReturnType<typeof vi.fn>;
+  let reactivateUserFn: ReturnType<typeof vi.fn>;
   let resendWelcomeEmailFn: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
@@ -37,6 +39,14 @@ describe('UsersController', () => {
     resendWelcomeEmailFn = vi.fn().mockResolvedValue({
       message: 'Correo de bienvenida reenviado exitosamente.',
     });
+    deactivateUserFn = vi.fn().mockResolvedValue({
+      message: 'Usuario dado de baja exitosamente.',
+      id: 'u1',
+    });
+    reactivateUserFn = vi.fn().mockResolvedValue({
+      message: 'Usuario reactivado exitosamente.',
+      id: 'u1',
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UsersController],
@@ -48,6 +58,8 @@ describe('UsersController', () => {
             findAll: findAllFn,
             findOne: findOneFn,
             updateUser: updateUserFn,
+            deactivateUser: deactivateUserFn,
+            reactivateUser: reactivateUserFn,
             resendWelcomeEmail: resendWelcomeEmailFn,
           },
         },
@@ -107,6 +119,30 @@ describe('UsersController', () => {
       id: 'u1',
       email: 'ana@centralbv.com',
       roles: ['COMUN'],
+    });
+  });
+
+  it('remove delega a usersService.deactivateUser', async () => {
+    const id = '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b';
+
+    const result = await controller.remove(id);
+
+    expect(deactivateUserFn).toHaveBeenCalledWith(id);
+    expect(result).toEqual({
+      message: 'Usuario dado de baja exitosamente.',
+      id: 'u1',
+    });
+  });
+
+  it('reactivate delega a usersService.reactivateUser', async () => {
+    const id = '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b';
+
+    const result = await controller.reactivate(id);
+
+    expect(reactivateUserFn).toHaveBeenCalledWith(id);
+    expect(result).toEqual({
+      message: 'Usuario reactivado exitosamente.',
+      id: 'u1',
     });
   });
 

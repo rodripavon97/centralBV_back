@@ -3,6 +3,7 @@ import {
   UseGuards,
   Post,
   Patch,
+  Delete,
   Body,
   Get,
   Query,
@@ -82,6 +83,41 @@ export class UsersController {
   })
   async resendWelcomeEmail(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.resendWelcomeEmail(id);
+  }
+
+  @Patch(':id/reactivar')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary:
+      'Reactivar una cuenta dada de baja, conservando sus datos (Solo Admin)',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'UUID del usuario',
+    example: '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b',
+  })
+  @ApiResponse({ status: 200, description: 'Usuario reactivado' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  async reactivate(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.reactivateUser(id);
+  }
+
+  @Delete(':id')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary:
+      'Dar de baja lógicamente a un usuario, conservando sus datos (Solo Admin)',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'UUID del usuario',
+    example: '7b0f1c2e-4a5d-4e6f-8a9b-0c1d2e3f4a5b',
+  })
+  @ApiResponse({ status: 200, description: 'Usuario dado de baja' })
+  @ApiResponse({ status: 400, description: 'No se puede dar de baja al admin' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.deactivateUser(id);
   }
 
   @Get(':id')
