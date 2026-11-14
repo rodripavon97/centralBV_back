@@ -126,6 +126,49 @@ describe('SupabaseUserRepository', () => {
     );
   });
 
+  it('deactivate marca activo=false sin borrar la fila', async () => {
+    const update = vi
+      .fn()
+      .mockReturnValue(
+        mockTerminal({ data: { ...row, activo: false }, error: null }),
+      );
+    from.mockReturnValue({ update });
+
+    const user = await repo.deactivate('u1');
+
+    expect(from).toHaveBeenCalledWith('usuarios');
+    expect(update).toHaveBeenCalledWith({ activo: false });
+    expect(user).toBeInstanceOf(User);
+    expect(user.activo).toBe(false);
+  });
+
+  it('deactivate propaga errores de Supabase', async () => {
+    const update = vi
+      .fn()
+      .mockReturnValue(
+        mockTerminal({ data: null, error: { message: 'update failed' } }),
+      );
+    from.mockReturnValue({ update });
+
+    await expect(repo.deactivate('u1')).rejects.toThrow('update failed');
+  });
+
+  it('activate reactiva la cuenta sin borrar la fila', async () => {
+    const update = vi
+      .fn()
+      .mockReturnValue(
+        mockTerminal({ data: { ...row, activo: true }, error: null }),
+      );
+    from.mockReturnValue({ update });
+
+    const user = await repo.activate('u1');
+
+    expect(from).toHaveBeenCalledWith('usuarios');
+    expect(update).toHaveBeenCalledWith({ activo: true });
+    expect(user).toBeInstanceOf(User);
+    expect(user.activo).toBe(true);
+  });
+
   it('findByEmail retorna User o null', async () => {
     from.mockReturnValue(mockTerminal({ data: row, error: null }));
     await expect(repo.findByEmail(row.email)).resolves.toEqual(

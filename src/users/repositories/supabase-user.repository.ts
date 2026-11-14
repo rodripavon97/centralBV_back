@@ -61,6 +61,27 @@ export class SupabaseUserRepository implements UserRepository {
     return data ? this.toUser(data as SupabaseUserResponse) : null;
   }
 
+  async deactivate(id: string): Promise<User> {
+    return this.setActive(id, false);
+  }
+
+  async activate(id: string): Promise<User> {
+    return this.setActive(id, true);
+  }
+
+  /** Actualiza el estado lógico del usuario sin borrar la fila. */
+  private async setActive(id: string, activo: boolean): Promise<User> {
+    const { data: updatedUser, error } = await this.db
+      .from('usuarios')
+      .update({ activo })
+      .eq('id', id)
+      .select(`*, usuario_rol ( roles ( nombre ) )`)
+      .single();
+
+    if (error) throwMappedSupabaseError(error);
+    return this.toUser(updatedUser as SupabaseUserResponse);
+  }
+
   async findAll(
     params: FindAllUsersParams,
   ): Promise<{ items: User[]; total: number }> {

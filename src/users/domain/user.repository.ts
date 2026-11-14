@@ -6,6 +6,10 @@ export interface UserRepository {
   update(id: string, user: Partial<User>): Promise<User>;
   findByEmail(email: string): Promise<User | null>;
   findById(id: string): Promise<User | null>;
+  /** Baja lógica: marca `activo = false` sin borrar la fila. */
+  deactivate(id: string): Promise<User>;
+  /** Reactiva una cuenta dada de baja: marca `activo = true`. */
+  activate(id: string): Promise<User>;
   findAll(
     params: FindAllUsersParams,
   ): Promise<{ items: User[]; total: number }>;

@@ -22,6 +22,8 @@ describe('UsersService', () => {
   let findAll: ReturnType<typeof vi.fn>;
   let create: ReturnType<typeof vi.fn>;
   let update: ReturnType<typeof vi.fn>;
+  let deactivate: ReturnType<typeof vi.fn>;
+  let activate: ReturnType<typeof vi.fn>;
   let createUser: ReturnType<typeof vi.fn>;
   let updateUserById: ReturnType<typeof vi.fn>;
   let from: ReturnType<typeof vi.fn>;
@@ -61,6 +63,8 @@ describe('UsersService', () => {
     findAll = vi.fn();
     create = vi.fn().mockResolvedValue(undefined);
     update = vi.fn().mockResolvedValue(undefined);
+    deactivate = vi.fn().mockResolvedValue(undefined);
+    activate = vi.fn().mockResolvedValue(undefined);
     createUser = vi.fn();
     updateUserById = vi.fn().mockResolvedValue({ data: null, error: null });
     from = vi.fn();
@@ -73,7 +77,15 @@ describe('UsersService', () => {
         UsersService,
         {
           provide: USER_REPOSITORY,
-          useValue: { findByEmail, findById, create, update, findAll },
+          useValue: {
+            findByEmail,
+            findById,
+            create,
+            update,
+            deactivate,
+            activate,
+            findAll,
+          },
         },
         {
           provide: SupabaseService,
@@ -476,6 +488,143 @@ describe('UsersService', () => {
         ),
       ).rejects.toThrow(NotFoundException);
       expect(update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── BAJA LÓGICA ──────────────────────────────────────────────
+
+  describe('deactivateUser', () => {
+    it('marca al usuario como inactivo sin borrarlo', async () => {
+      const user = new User(
+        'u1',
+        'ana@centralbv.com',
+        'Ana',
+        'Lopez',
+        true,
+        undefined,
+        ['COMUN'],
+      );
+      findById.mockResolvedValue(user);
+      deactivate.mockResolvedValue(
+        new User(
+          user.id,
+          user.email,
+          user.nombre,
+          user.apellido,
+          false,
+          user.googleSub,
+          user.roles,
+        ),
+      );
+
+      const result = await service.deactivateUser(user.id);
+
+      expect(deactivate).toHaveBeenCalledWith(user.id);
+      expect(result).toEqual({
+        message: 'Usuario dado de baja exitosamente.',
+        id: user.id,
+      });
+    });
+
+    it('lanza NotFoundException si el usuario no existe', async () => {
+      findById.mockResolvedValue(null);
+
+      await expect(service.deactivateUser('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(deactivate).not.toHaveBeenCalled();
+    });
+
+    it('no permite dar de baja al administrador principal', async () => {
+      findById.mockResolvedValue(
+        new User(
+          'admin-id',
+          'admin@centralbv.com',
+          'Admin',
+          'Central',
+          true,
+          undefined,
+          ['ADMIN'],
+        ),
+      );
+
+      await expect(service.deactivateUser('admin-id')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(deactivate).not.toHaveBeenCalled();
+    });
+
+    it('es idempotente si el usuario ya estaba dado de baja', async () => {
+      findById.mockResolvedValue(
+        new User('u1', 'ana@centralbv.com', 'Ana', 'Lopez', false),
+      );
+
+      const result = await service.deactivateUser('u1');
+
+      expect(deactivate).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        message: 'El usuario ya se encontraba dado de baja.',
+        id: 'u1',
+      });
+    });
+  });
+
+  // ─── REACTIVACIÓN ─────────────────────────────────────────────
+
+  describe('reactivateUser', () => {
+    it('reactiva al usuario dado de baja', async () => {
+      const user = new User(
+        'u1',
+        'ana@centralbv.com',
+        'Ana',
+        'Lopez',
+        false,
+        undefined,
+        ['COMUN'],
+      );
+      findById.mockResolvedValue(user);
+      activate.mockResolvedValue(
+        new User(
+          user.id,
+          user.email,
+          user.nombre,
+          user.apellido,
+          true,
+          user.googleSub,
+          user.roles,
+        ),
+      );
+
+      const result = await service.reactivateUser(user.id);
+
+      expect(activate).toHaveBeenCalledWith(user.id);
+      expect(result).toEqual({
+        message: 'Usuario reactivado exitosamente.',
+        id: user.id,
+      });
+    });
+
+    it('lanza NotFoundException si el usuario no existe', async () => {
+      findById.mockResolvedValue(null);
+
+      await expect(service.reactivateUser('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(activate).not.toHaveBeenCalled();
+    });
+
+    it('es idempotente si el usuario ya estaba activo', async () => {
+      findById.mockResolvedValue(
+        new User('u1', 'ana@centralbv.com', 'Ana', 'Lopez', true),
+      );
+
+      const result = await service.reactivateUser('u1');
+
+      expect(activate).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        message: 'El usuario ya se encontraba activo.',
+        id: 'u1',
+      });
     });
   });
 
