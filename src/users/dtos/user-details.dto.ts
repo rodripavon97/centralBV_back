@@ -8,6 +8,9 @@ export class UserDetailDto extends UserBaseDto {
   @ApiProperty({ example: 'ef98fa75-45ad-4067-b5dc-d00c4bed38af' })
   id: string;
 
+  @ApiProperty({ example: true })
+  activo: boolean;
+
   @ApiProperty({ example: ['AUTOMOTORES'], type: [String] })
   roles: string[];
 
@@ -17,6 +20,7 @@ export class UserDetailDto extends UserBaseDto {
     dto.email = row.email;
     dto.nombre = row.nombre;
     dto.apellido = row.apellido;
+    dto.activo = row.activo;
     dto.roles = row.roles
       .map((ur) => ur.roles?.nombre)
       .filter((nombre): nombre is string => Boolean(nombre));
@@ -29,6 +33,7 @@ export class UserDetailDto extends UserBaseDto {
     dto.email = user.email;
     dto.nombre = user.nombre;
     dto.apellido = user.apellido;
+    dto.activo = user.activo;
     dto.roles = user.roles ?? [];
     return dto;
   }

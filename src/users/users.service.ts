@@ -24,6 +24,9 @@ import { EditUserDto } from './dtos/edit-user.dto.js';
 
 @Injectable()
 export class UsersService {
+  /** Administrador raíz del sistema: no puede darse de baja. */
+  private static readonly ROOT_ADMIN_EMAIL = 'admin@centralbv.com';
+
   private readonly logger = new Logger(UsersService.name);
 
   constructor(
@@ -178,6 +181,46 @@ export class UsersService {
     }
 
     return this.findOne(id);
+  }
+
+  /**
+   * Baja lógica del usuario: se marca como inactivo para impedir el acceso
+   * (el login rechaza usuarios con `activo = false`) sin borrar la fila ni
+   * sus datos asociados.
+   */
+  async deactivateUser(
+    id: string,
+  ): Promise<{ message: string; id: string }> {
+    const user = await this.findOne(id);
+
+    if (user.email === UsersService.ROOT_ADMIN_EMAIL) {
+      throw new BadRequestException(
+        'No se puede dar de baja al administrador principal del sistema',
+      );
+    }
+
+    if (!user.activo) {
+      return { message: 'El usuario ya se encontraba dado de baja.', id };
+    }
+
+    await this.userRepo.deactivate(id);
+
+    return { message: 'Usuario dado de baja exitosamente.', id };
+  }
+
+  /** Reactiva una cuenta dada de baja previamente. */
+  async reactivateUser(
+    id: string,
+  ): Promise<{ message: string; id: string }> {
+    const user = await this.findOne(id);
+
+    if (user.activo) {
+      return { message: 'El usuario ya se encontraba activo.', id };
+    }
+
+    await this.userRepo.activate(id);
+
+    return { message: 'Usuario reactivado exitosamente.', id };
   }
 
   async resendWelcomeEmail(id: string) {
